@@ -109,15 +109,25 @@ body {
     border-color: var(--accent-color);
 }
 
-.field-preview {
-    margin-top: 2px;
-    margin-left: auto;
+.dropdown-wrap {
+    position: relative;
     width: 140px;
-    font-size: 11px;
+}
+
+.dropdown-inline-label {
+    position: absolute;
+    left: 10px;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
     color: var(--text-color);
     text-align: left;
-    min-height: 14px;
-    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    line-height: 1.2;
 }
 
 

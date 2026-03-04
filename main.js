@@ -312,9 +312,9 @@ async function exportSlides() {
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
-function syncDropdownSelection(dropdownId, previewId, forcedValue) {
+function syncDropdownSelection(dropdownId, textTargetId, forcedValue) {
     const dropdown = document.getElementById(dropdownId);
-    const preview = document.getElementById(previewId);
+    const textTarget = document.getElementById(textTargetId);
     if (!dropdown) return;
 
     const value = forcedValue || getDropdownValue(dropdown);
@@ -334,15 +334,15 @@ function syncDropdownSelection(dropdownId, previewId, forcedValue) {
         else menuItem.removeAttribute("selected");
     });
 
-    if (preview) preview.textContent = item.textContent.trim();
+    if (textTarget) textTarget.textContent = item.textContent.trim();
 }
 
-function bindDropdownPreview(dropdownId, previewId, onSync) {
+function bindDropdownPreview(dropdownId, textTargetId, onSync) {
     const dropdown = document.getElementById(dropdownId);
     if (!dropdown) return;
 
     const apply = nextValue => {
-        syncDropdownSelection(dropdownId, previewId, nextValue);
+        syncDropdownSelection(dropdownId, textTargetId, nextValue);
         if (onSync) onSync(getDropdownValue(dropdown));
     };
 
@@ -384,11 +384,11 @@ function bindDropdownPreview(dropdownId, previewId, onSync) {
 
 document.addEventListener("DOMContentLoaded", () => {
     const customFields = document.getElementById("custom-fields");
-    bindDropdownPreview("size-preset", "size-preset-preview", value => {
+    bindDropdownPreview("size-preset", "size-preset-inline", value => {
         if (customFields) customFields.classList.toggle("hidden", value !== "custom");
         updateSizeHint();
     });
-    bindDropdownPreview("export-format", "export-format-preview");
+    bindDropdownPreview("export-format", "export-format-inline");
 
     ["slide-count", "custom-w", "custom-h"].forEach(id => {
         const el = document.getElementById(id);
