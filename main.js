@@ -29,7 +29,21 @@ function showError(label, err) {
     console.error(label, err);
 }
 
-function getVal(id) { const el = document.getElementById(id); return el ? (el.value || "") : ""; }
+function getDropdownValue(el) {
+    if (!el) return "";
+    if (el.value) return el.value;
+    const selected = el.querySelector("sp-menu-item[selected]");
+    if (selected) return selected.getAttribute("value") || "";
+    const first = el.querySelector("sp-menu-item");
+    return first ? (first.getAttribute("value") || "") : "";
+}
+
+function getVal(id) {
+    const el = document.getElementById(id);
+    if (!el) return "";
+    if (el.tagName === "SP-DROPDOWN") return getDropdownValue(el);
+    return el.value || "";
+}
 
 function getSlideSize() {
     const p = getVal("size-preset");
@@ -298,16 +312,83 @@ async function exportSlides() {
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
-document.addEventListener("DOMContentLoaded", () => {
-    const presetPicker = document.getElementById("size-preset");
-    const customFields = document.getElementById("custom-fields");
+function syncDropdownSelection(dropdownId, previewId, forcedValue) {
+    const dropdown = document.getElementById(dropdownId);
+    const preview = document.getElementById(previewId);
+    if (!dropdown) return;
 
-    if (presetPicker) {
-        presetPicker.addEventListener("change", () => {
-            customFields.classList.toggle("hidden", presetPicker.value !== "custom");
-            updateSizeHint();
-        });
+    const value = forcedValue || getDropdownValue(dropdown);
+    const item =
+        dropdown.querySelector(`sp-menu-item[value="${value}"]`) ||
+        dropdown.querySelector("sp-menu-item[selected]") ||
+        dropdown.querySelector("sp-menu-item");
+
+    if (!item) return;
+
+    const itemValue = item.getAttribute("value") || "";
+    dropdown.value = itemValue;
+
+    dropdown.querySelectorAll("sp-menu-item").forEach(menuItem => {
+        const menuValue = menuItem.getAttribute("value") || "";
+        if (menuValue === itemValue) menuItem.setAttribute("selected", "");
+        else menuItem.removeAttribute("selected");
+    });
+
+    if (preview) preview.textContent = item.textContent.trim();
+}
+
+function bindDropdownPreview(dropdownId, previewId, onSync) {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown) return;
+
+    const apply = nextValue => {
+        syncDropdownSelection(dropdownId, previewId, nextValue);
+        if (onSync) onSync(getDropdownValue(dropdown));
+    };
+
+    const handleClickSelection = event => {
+        const target = event.target;
+        if (!target || typeof target.closest !== "function") return;
+        const item = target.closest("sp-menu-item");
+        if (item) apply(item.getAttribute("value") || "");
+    };
+
+    apply(getDropdownValue(dropdown));
+
+    dropdown.addEventListener("change", () => apply(getDropdownValue(dropdown)));
+    dropdown.addEventListener("input", () => apply(getDropdownValue(dropdown)));
+    dropdown.addEventListener("click", handleClickSelection);
+
+    const menu = dropdown.querySelector("sp-menu");
+    if (menu) {
+        menu.addEventListener("change", () => apply(getDropdownValue(dropdown)));
+        menu.addEventListener("click", handleClickSelection);
     }
+
+    dropdown.querySelectorAll("sp-menu-item").forEach(item => {
+        item.addEventListener("click", () => apply(item.getAttribute("value") || ""));
+        item.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+                apply(item.getAttribute("value") || "");
+            }
+        });
+    });
+
+    const observer = new MutationObserver(() => apply(getDropdownValue(dropdown)));
+    observer.observe(dropdown, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["selected", "value"]
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const customFields = document.getElementById("custom-fields");
+    bindDropdownPreview("size-preset", "size-preset-preview", value => {
+        if (customFields) customFields.classList.toggle("hidden", value !== "custom");
+        updateSizeHint();
+    });
+    bindDropdownPreview("export-format", "export-format-preview");
 
     ["slide-count", "custom-w", "custom-h"].forEach(id => {
         const el = document.getElementById(id);
@@ -320,5 +401,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-crop-slides")  .addEventListener("click", cropSlides);
     document.getElementById("btn-export-slides").addEventListener("click", exportSlides);
 
+    if (customFields) customFields.classList.toggle("hidden", getVal("size-preset") !== "custom");
     updateSizeHint();
 });

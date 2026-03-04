@@ -22,12 +22,15 @@
 
         <div class="field-row">
             <span class="field-label">Preset Size</span>
-            <select id="size-preset" class="native-select">
-                <option value="instagram" selected>Instagram  1080 × 1080</option>
-                <option value="long">Long  1080 × 1350</option>
-                <option value="custom">Custom…</option>
-            </select>
+            <sp-dropdown id="size-preset" class="native-select" value="instagram">
+                <sp-menu>
+                    <sp-menu-item value="instagram">Instagram  1080 × 1080</sp-menu-item>
+                    <sp-menu-item value="long">Long  1080 × 1350</sp-menu-item>
+                    <sp-menu-item value="custom">Custom…</sp-menu-item>
+                </sp-menu>
+            </sp-dropdown>
         </div>
+        <div class="field-preview" id="size-preset-preview">Instagram 1080 × 1080</div>
 
         <div id="custom-fields" class="hidden">
             <div class="field-row">
@@ -76,11 +79,14 @@
 
         <div class="field-row">
             <span class="field-label">Format</span>
-            <select id="export-format" class="native-select">
-                <option value="jpg" selected>JPG</option>
-                <option value="png">PNG</option>
-            </select>
+            <sp-dropdown id="export-format" class="native-select" value="jpg">
+                <sp-menu>
+                    <sp-menu-item value="jpg">JPG</sp-menu-item>
+                    <sp-menu-item value="png">PNG</sp-menu-item>
+                </sp-menu>
+            </sp-dropdown>
         </div>
+        <div class="field-preview" id="export-format-preview">JPG</div>
 
         <div class="field-row">
             <span class="field-label">JPG Quality (1–12)</span>

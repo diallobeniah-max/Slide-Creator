@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropdown Test - UXP Plugin</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { padding: 20px; background: #333; }
+        .test-container { margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h2 style="color: white;">UXP Plugin Dropdown Test</h2>
+    
+    <div class="test-container">
+        <label style="color: white;">Size Preset:</label><br>
+        <sp-dropdown id="size-preset" class="native-select" value="instagram">
+            <sp-menu>
+                <sp-menu-item value="instagram">Instagram 1080 × 1080</sp-menu-item>
+                <sp-menu-item value="long">Long 1080 × 1350</sp-menu-item>
+                <sp-menu-item value="custom">Custom…</sp-menu-item>
+            </sp-menu>
+            <span slot="label">Instagram 1080 × 1080</span>
+        </sp-dropdown>
+    </div>
+    
+    <div class="test-container">
+        <label style="color: white;">Export Format:</label><br>
+        <sp-dropdown id="export-format" class="native-select" value="jpg">
+            <sp-menu>
+                <sp-menu-item value="jpg">JPG</sp-menu-item>
+                <sp-menu-item value="png">PNG</sp-menu-item>
+            </sp-menu>
+            <span slot="label">JPG</span>
+        </sp-dropdown>
+    </div>
+    
+    <div style="color: white; margin-top: 20px;">
+        <p>Test instructions:</p>
+        <ol>
+            <li>Click on each dropdown to see if options are visible</li>
+            <li>Use arrow keys to navigate through options</li>
+            <li>Verify that selections work properly</li>
+        </ol>
+        <p style="color: #aaa; font-size: 12px;">Note: This uses Spectrum components (sp-dropdown) which are designed for UXP plugin environments.</p>
+    </div>
+    
+    <script>
+        // Function to update dropdown display text
+        function updateDropdownDisplay(dropdown) {
+            const value = dropdown.value;
+            const selectedText = dropdown.querySelector(`sp-menu-item[value="${value}"]`)?.textContent || value;
+            const labelSlot = dropdown.querySelector('span[slot="label"]');
+            if (labelSlot) {
+                labelSlot.textContent = selectedText;
+            }
+        }
+        
+        // Initialize dropdowns
+        document.getElementById('size-preset').addEventListener('change', function(event) {
+            updateDropdownDisplay(event.target);
+            console.log('Size preset changed to:', event.target.value);
+        });
+        
+        document.getElementById('export-format').addEventListener('change', function(event) {
+            updateDropdownDisplay(event.target);
+            console.log('Export format changed to:', event.target.value);
+        });
+        
+        // Initialize display on load
+        updateDropdownDisplay(document.getElementById('size-preset'));
+        updateDropdownDisplay(document.getElementById('export-format'));
+    </script>
+</body>
+</html>
