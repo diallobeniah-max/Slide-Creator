@@ -1,0 +1,198 @@
+/* ── Reset / Base ─────────────────────────────────────────────────────── */
+:root {
+    --bg-color: var(--uxp-host-background-color, #2b2b2b);
+    --text-color: var(--uxp-host-text-color, #e0e0e0);
+    --card-bg: rgba(255, 255, 255, 0.05);
+    --card-border: rgba(255, 255, 255, 0.1);
+    --accent-color: #5B9BF0;
+    --text-muted: #aaa;
+    --text-dim: #666;
+    --radius-s: 4px;
+    --radius-m: 8px;
+    --spacing-xs: 4px;
+    --spacing-s: 8px;
+    --spacing-m: 12px;
+    --spacing-l: 16px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 12px;
+    overflow-x: hidden;
+    line-height: 1.4;
+}
+
+/* ── Panel wrapper ────────────────────────────────────────────────────── */
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-m);
+    padding: var(--spacing-l);
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+.header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-s);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    padding-bottom: var(--spacing-m);
+    margin-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--card-border);
+}
+.header-icon { font-size: 16px; color: var(--accent-color); }
+
+/* ── Cards ────────────────────────────────────────────────────────────── */
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-m);
+    padding: var(--spacing-m);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-m);
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-s);
+    margin-bottom: var(--spacing-xs);
+}
+
+.section-icon { font-size: 14px; }
+.section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+/* ── Field row ────────────────────────────────────────────────────────── */
+.field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-s);
+}
+
+.field-label {
+    font-size: 12px;
+    color: var(--text-color);
+    flex: 1;
+}
+
+/* ── Spectrum components sizing ───────────────────────────────────────── */
+sp-textfield { width: 100px; }
+sp-picker    { width: 140px; }
+sp-button.full-width { width: 100%; }
+
+/* ── Hidden ───────────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ── Custom fields ────────────────────────────────────────────────────── */
+#custom-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-s);
+    padding-left: var(--spacing-m);
+    border-left: 2px solid var(--card-border);
+}
+
+/* ── Canvas hint ──────────────────────────────────────────────────────── */
+.canvas-hint {
+    background: rgba(91, 155, 240, 0.1);
+    border: 1px solid rgba(91, 155, 240, 0.2);
+    border-radius: var(--radius-s);
+    padding: 8px;
+    font-size: 11px;
+    color: var(--accent-color);
+    text-align: center;
+    font-weight: 500;
+}
+
+/* ── Two-button row ───────────────────────────────────────────────────── */
+.row-2 { display: flex; gap: var(--spacing-s); }
+.row-2 sp-button { flex: 1; }
+
+/* ── Action Groups ────────────────────────────────────────────────────── */
+.action-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+}
+
+.step-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-s);
+    margin-bottom: 2px;
+}
+
+.step-badge {
+    background: var(--card-border);
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.step-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* ── Status / error area ──────────────────────────────────────────────── */
+.status-wrap { 
+    margin-top: var(--spacing-s);
+    display: flex; 
+    flex-direction: column; 
+    gap: var(--spacing-s); 
+}
+
+.status-bar {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 6px;
+    background: var(--card-bg);
+    border-radius: var(--radius-s);
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.status-bar.working { color: var(--accent-color); border: 1px solid var(--accent-color); background: rgba(91, 155, 240, 0.05); }
+.status-bar.success { color: #2ecc71; border: 1px solid #2ecc71; background: rgba(46, 204, 113, 0.05); }
+.status-bar.error   { color: #e74c3c; border: 1px solid #e74c3c; background: rgba(231, 76, 60, 0.05); }
+
+.error-log {
+    background: rgba(231, 76, 60, 0.1);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    border-radius: var(--radius-s);
+    padding: 8px;
+    font-size: 10px;
+    font-family: monospace;
+    color: #ff8080;
+    word-break: break-word;
+    max-height: 100px;
+    overflow-y: auto;
+}

@@ -1,0 +1,47 @@
+{
+    "id": "com.yourname.instagramslidecreator",
+    "name": "Instagram Slide Creator",
+    "version": "1.0.0",
+    "main": "index.html",
+    "manifestVersion": 5,
+    "host": [
+        {
+            "app": "PS",
+            "minVersion": "23.0.0"
+        }
+    ],
+    "entrypoints": [
+        {
+            "type": "panel",
+            "id": "instagramSlidePanel",
+            "label": {
+                "default": "Instagram Slide Creator"
+            },
+            "icons": [
+                {
+                    "width": 24,
+                    "height": 24,
+                    "path": "icon_24.png",
+                    "scale": [1, 2],
+                    "theme": ["dark", "light", "brightest", "medium"]
+                }
+            ],
+            "minimumSize": {"width": 280, "height": 420},
+            "maximumSize": {"width": 800, "height": 900},
+            "preferredDockedSize": {"width": 300, "height": 520},
+            "preferredFloatingSize": {"width": 300, "height": 520}
+        }
+    ],
+    "icons": [
+        {
+            "width": 24,
+            "height": 24,
+            "path": "icon_24.png",
+            "scale": [1, 2],
+            "theme": ["dark", "light", "brightest", "medium"]
+        }
+    ],
+    "requiredPermissions": {
+        "localFileSystem": "request"
+    }
+}

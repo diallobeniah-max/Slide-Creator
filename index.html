@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="panel">
+
+    <!-- HEADER -->
+    <div class="header">
+        <span class="header-icon">▦</span>
+        <span>Instagram Slide Creator</span>
+    </div>
+
+    <!-- ── SECTION 1: CANVAS SETUP ── -->
+    <section class="card">
+        <div class="section-header">
+            <span class="section-icon">🎨</span>
+            <span class="section-title">Canvas Setup</span>
+        </div>
+
+        <div class="field-row">
+            <span class="field-label">Preset Size</span>
+            <sp-picker id="size-preset" size="s" label="Instagram  933 × 932">
+                <sp-menu>
+                    <sp-menu-item value="instagram" selected>Instagram  933 × 932</sp-menu-item>
+                    <sp-menu-item value="long">Long  4323 × 5404</sp-menu-item>
+                    <sp-menu-item value="custom">Custom…</sp-menu-item>
+                </sp-menu>
+            </sp-picker>
+        </div>
+
+        <div id="custom-fields" class="hidden">
+            <div class="field-row">
+                <span class="field-label">Width (px)</span>
+                <sp-textfield id="custom-w" value="933" type="number" size="s"></sp-textfield>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Height (px)</span>
+                <sp-textfield id="custom-h" value="932" type="number" size="s"></sp-textfield>
+            </div>
+        </div>
+
+        <div class="field-row">
+            <span class="field-label">Number of Slides</span>
+            <sp-textfield id="slide-count" value="6" type="number" size="s"></sp-textfield>
+        </div>
+
+        <div class="field-row">
+            <span class="field-label">Filename Prefix</span>
+            <sp-textfield id="export-prefix" value="slide" size="s"></sp-textfield>
+        </div>
+
+        <div class="canvas-hint" id="size-hint">Total: — × — px</div>
+
+        <sp-button id="btn-create-canvas" variant="cta" size="m" class="full-width">Create Canvas</sp-button>
+    </section>
+
+    <!-- ── SECTION 2: GUIDES ── -->
+    <section class="card">
+        <div class="section-header">
+            <span class="section-icon">📏</span>
+            <span class="section-title">Guides</span>
+        </div>
+        <div class="row-2">
+            <sp-button id="btn-add-guides"   variant="secondary" size="s">Add Guides</sp-button>
+            <sp-button id="btn-clear-guides" variant="secondary" size="s">Clear Guides</sp-button>
+        </div>
+    </section>
+
+    <!-- ── SECTION 3: EXPORT ── -->
+    <section class="card">
+        <div class="section-header">
+            <span class="section-icon">📤</span>
+            <span class="section-title">Export</span>
+        </div>
+
+        <div class="field-row">
+            <span class="field-label">Format</span>
+            <sp-picker id="export-format" size="s" label="JPG">
+                <sp-menu>
+                    <sp-menu-item value="jpg" selected>JPG</sp-menu-item>
+                    <sp-menu-item value="png">PNG</sp-menu-item>
+                </sp-menu>
+            </sp-picker>
+        </div>
+
+        <div class="field-row">
+            <span class="field-label">JPG Quality (1–12)</span>
+            <sp-textfield id="export-quality" value="10" type="number" size="s"></sp-textfield>
+        </div>
+
+        <div class="action-group">
+            <div class="step-row">
+                <div class="step-badge">1</div>
+                <div class="step-text">Split slides into new documents</div>
+            </div>
+            <sp-button id="btn-crop-slides" variant="secondary" size="m" class="full-width">Crop Slides</sp-button>
+        </div>
+
+        <div class="action-group">
+            <div class="step-row">
+                <div class="step-badge">2</div>
+                <div class="step-text">Save all open slide documents</div>
+            </div>
+            <sp-button id="btn-export-slides" variant="cta" size="m" class="full-width">Export All Slides</sp-button>
+        </div>
+    </section>
+
+    <!-- STATUS -->
+    <div class="status-wrap">
+        <div class="status-bar" id="status-bar">Ready</div>
+        <div class="error-log hidden" id="error-log"></div>
+    </div>
+
+</div>
+<script src="main.js"></script>
+</body>
+</html>
