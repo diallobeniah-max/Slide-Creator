@@ -61,6 +61,11 @@ body {
     gap: var(--spacing-m);
 }
 
+.guides-card {
+    margin-top: 6px;
+    margin-bottom: 6px;
+}
+
 .section-header {
     display: flex;
     align-items: center;

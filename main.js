@@ -6,8 +6,8 @@ const uxpFs     = require("uxp").storage.localFileSystem;
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 const PRESETS = {
-    instagram: { w: 933,  h: 932  },
-    long:      { w: 4323, h: 5404 },
+    instagram: { w: 1080, h: 1080 },
+    long:      { w: 1080, h: 1350 },
 };
 
 let slideDocIds   = [];
@@ -139,6 +139,18 @@ async function cropSlides() {
     const docH    = Number(origDoc.height);
     const sliceW  = Math.round(docW / slideCount);
 
+    // Close any previously cropped docs that were never exported
+    if (slideDocIds.length > 0) {
+        try {
+            await core.executeAsModal(async () => {
+                for (const id of slideDocIds) {
+                    const old = app.documents.find(d => d.id === id);
+                    if (old) await old.close(constants.SaveOptions.DONOTSAVECHANGES);
+                }
+            }, { commandName: "Close previous slides" });
+        } catch (_) {}
+    }
+
     slideDocIds = [];
     setStatus("Cropping slides…", "working");
 
@@ -210,6 +222,19 @@ async function cropSlides() {
 // Saves each slide doc as the chosen format (JPG or PNG — once each, not both)
 // File entries created outside modal, saveAs called inside modal
 
+async function closeAllSlideDocs() {
+    if (slideDocIds.length === 0) return;
+    try {
+        await core.executeAsModal(async () => {
+            for (const id of slideDocIds) {
+                const doc = app.documents.find(d => d.id === id);
+                if (doc) await doc.close(constants.SaveOptions.DONOTSAVECHANGES);
+            }
+        }, { commandName: "Close slide docs" });
+    } catch (_) {}
+    slideDocIds = [];
+}
+
 async function exportSlides() {
     if (slideDocIds.length === 0) { showError("Export failed", new Error("No slides — tap Crop Slides first.")); return; }
 
@@ -235,7 +260,7 @@ async function exportSlides() {
         let fileEntry;
         try {
             fileEntry = await folder.createFile(`${exportPrefix}_${num}.${ext}`, { overwrite: true });
-        } catch (e) { showError(`Slide ${num}: file creation failed`, e); return; }
+        } catch (e) { await closeAllSlideDocs(); showError(`Slide ${num}: file creation failed`, e); return; }
 
         try {
             await core.executeAsModal(async () => {
@@ -255,12 +280,12 @@ async function exportSlides() {
 
             setStatus(`Saved ${i + 1} / ${count}…`, "working");
 
-        } catch (e) { showError(`Export slide ${num} failed`, e); return; }
+        } catch (e) { await closeAllSlideDocs(); showError(`Export slide ${num} failed`, e); return; }
     }
 
     slideDocIds = [];
 
-    // Return to original
+    // Return to original and close any stray slide docs that may remain
     try {
         await core.executeAsModal(async () => {
             const orig = app.documents.find(d => d.id === originalDocId);
@@ -275,26 +300,39 @@ async function exportSlides() {
 
 document.addEventListener("DOMContentLoaded", () => {
     const presetPicker = document.getElementById("size-preset");
+    const formatPicker = document.getElementById("export-format");
     const customFields = document.getElementById("custom-fields");
 
-    function onPresetChange() {
-        const val = presetPicker.value;
-        customFields.classList.toggle("hidden", val !== "custom");
-        
-        // Update picker label to show selected text
-        if (val && val !== "custom") {
-            const item = presetPicker.querySelector(`sp-menu-item[value="${val}"]`);
-            if (item) presetPicker.setAttribute("label", item.textContent);
-        } else if (val === "custom") {
-            presetPicker.setAttribute("label", "Custom…");
-        }
-
-        updateSizeHint();
+    // Sets a picker's visible label from whichever sp-menu-item has [selected]
+    // or from picker.value — deferred so UXP has settled the value first
+    function syncPickerLabel(picker) {
+        if (!picker) return;
+        setTimeout(() => {
+            const val = picker.value;
+            if (!val) return;
+            const item = picker.querySelector(`sp-menu-item[value="${val}"]`);
+            const label = item ? item.textContent.trim() : val;
+            picker.label = label;
+            picker.setAttribute("label", label);
+        }, 0);
     }
 
+    // Preset picker — change only (click fires before value settles)
     if (presetPicker) {
-        presetPicker.addEventListener("change", onPresetChange);
-        presetPicker.addEventListener("click",  onPresetChange);
+        presetPicker.addEventListener("change", () => {
+            syncPickerLabel(presetPicker);
+            const val = presetPicker.value;
+            customFields.classList.toggle("hidden", val !== "custom");
+            setTimeout(updateSizeHint, 0);
+        });
+        // Set initial label on load
+        syncPickerLabel(presetPicker);
+    }
+
+    // Format picker
+    if (formatPicker) {
+        formatPicker.addEventListener("change", () => syncPickerLabel(formatPicker));
+        syncPickerLabel(formatPicker);
     }
 
     ["slide-count", "custom-w", "custom-h"].forEach(id => {
