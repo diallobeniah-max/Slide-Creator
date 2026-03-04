@@ -1,7 +1,7 @@
 {
     "id": "com.yourname.instagramslidecreator",
     "name": "Instagram Slide Creator",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "main": "index.html",
     "manifestVersion": 5,
     "host": [
@@ -22,8 +22,15 @@
                     "width": 24,
                     "height": 24,
                     "path": "icon_24.png",
-                    "scale": [1, 2],
-                    "theme": ["dark", "light", "brightest", "medium"]
+                    "scale": [1],
+                    "theme": ["darkest", "dark", "medium", "light", "lightest"]
+                },
+                {
+                    "width": 24,
+                    "height": 24,
+                    "path": "icon_48.png",
+                    "scale": [2],
+                    "theme": ["darkest", "dark", "medium", "light", "lightest"]
                 }
             ],
             "minimumSize": {"width": 280, "height": 420},
@@ -37,8 +44,15 @@
             "width": 24,
             "height": 24,
             "path": "icon_24.png",
-            "scale": [1, 2],
-            "theme": ["dark", "light", "brightest", "medium"]
+            "scale": [1],
+            "theme": ["darkest", "dark", "medium", "light", "lightest"]
+        },
+        {
+            "width": 24,
+            "height": 24,
+            "path": "icon_48.png",
+            "scale": [2],
+            "theme": ["darkest", "dark", "medium", "light", "lightest"]
         }
     ],
     "requiredPermissions": {

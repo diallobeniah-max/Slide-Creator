@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Plugin Icon</title>
+    <style>
+        body {
+            background: #2b2b2b;
+            color: #e0e0e0;
+            font-family: system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        canvas {
+            border: 1px solid #555;
+            background: transparent;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #5b9bf0;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #4a8cd0; }
+        .info { margin-bottom: 20px; text-align: center; max-width: 400px; line-height: 1.5; color: #aaa; }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>Custom Icon Generator</h3>
+        <p>This page renders your new SVG icon as a PNG suitable for the Photoshop plugin manifest.</p>
+        <p>Click below to download <code>icon_24.png</code>.</p>
+    </div>
+
+    <!-- Canvas for rendering -->
+    <canvas id="canvas" width="24" height="24"></canvas>
+
+    <button id="download">Download icon_24.png</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const btn = document.getElementById('download');
+
+        // SVG data
+        const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+          <defs>
+            <linearGradient id="grad" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#FFDC80;stop-opacity:1" />
+              <stop offset="25%" style="stop-color:#FCB045;stop-opacity:1" />
+              <stop offset="50%" style="stop-color:#FD1D1D;stop-opacity:1" />
+              <stop offset="75%" style="stop-color:#833AB4;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#5851DB;stop-opacity:1" />
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#grad)" />
+          <path d="M9 2v20 M15 2v20" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>`;
+
+        const img = new Image();
+        const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+        const url = URL.createObjectURL(svgBlob);
+
+        img.onload = function() {
+            ctx.clearRect(0, 0, 24, 24);
+            ctx.drawImage(img, 0, 0, 24, 24);
+            URL.revokeObjectURL(url);
+        };
+        img.src = url;
+
+        btn.onclick = function() {
+            const link = document.createElement('a');
+            link.download = 'icon_24.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        };
+    </script>
+</body>
+</html>
