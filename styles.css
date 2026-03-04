@@ -118,6 +118,8 @@ sp-button.full-width { width: 100%; }
     color: var(--accent-color);
     text-align: center;
     font-weight: 500;
+    margin-top: 12px;
+    margin-bottom: 12px;
 }
 
 /* ── Two-button row ───────────────────────────────────────────────────── */

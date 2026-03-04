@@ -278,7 +278,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const customFields = document.getElementById("custom-fields");
 
     function onPresetChange() {
-        customFields.classList.toggle("hidden", presetPicker.value !== "custom");
+        const val = presetPicker.value;
+        customFields.classList.toggle("hidden", val !== "custom");
+        
+        // Update picker label to show selected text
+        if (val && val !== "custom") {
+            const item = presetPicker.querySelector(`sp-menu-item[value="${val}"]`);
+            if (item) presetPicker.setAttribute("label", item.textContent);
+        } else if (val === "custom") {
+            presetPicker.setAttribute("label", "Custom…");
+        }
+
         updateSizeHint();
     }
 
