@@ -114,6 +114,14 @@ body {
     width: 140px;
 }
 
+#slide-count,
+#export-prefix,
+#export-quality {
+    width: 140px;
+    min-width: 140px;
+    max-width: 140px;
+}
+
 .dropdown-inline-label {
     position: absolute;
     left: 10px;
@@ -134,10 +142,26 @@ body {
 
 
 
-/* ── Hidden ───────────────────────────────────────────────────────────── */
+/* ── Cursor control ───────────────────────────────────────────────────── */
+* { cursor: default; }
+
+sp-button,
+.custom-select-trigger,
+.custom-select-item,
+.row-2 sp-button,
+button { cursor: pointer !important; }
+
+sp-textfield,
+sp-textfield input,
+input[type="text"],
+input[type="number"] { cursor: text !important; }
+
+
+
+/* ── Hidden utility ───────────────────────────────────────────────────── */
 .hidden { display: none !important; }
 
-/* ── Custom fields ────────────────────────────────────────────────────── */
+/* ── Custom fields (hidden unless Custom preset selected) ─────────────── */
 #custom-fields {
     display: flex;
     flex-direction: column;
@@ -145,6 +169,8 @@ body {
     padding-left: var(--spacing-m);
     border-left: 2px solid var(--card-border);
 }
+
+#custom-fields.hidden { display: none !important; }
 
 /* ── Canvas hint ──────────────────────────────────────────────────────── */
 .canvas-hint {
