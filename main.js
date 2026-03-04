@@ -374,21 +374,25 @@ function bindDropdownPreview(dropdownId, textTargetId, onSync) {
         });
     });
 
-    const observer = new MutationObserver(() => apply(getDropdownValue(dropdown)));
-    observer.observe(dropdown, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["selected", "value"]
-    });
+    if (typeof MutationObserver === "function") {
+        const observer = new MutationObserver(() => apply(getDropdownValue(dropdown)));
+        observer.observe(dropdown, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["selected", "value", "aria-selected"]
+        });
+    }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     const customFields = document.getElementById("custom-fields");
-    bindDropdownPreview("size-preset", "size-preset-inline", value => {
-        if (customFields) customFields.classList.toggle("hidden", value !== "custom");
-        updateSizeHint();
-    });
-    bindDropdownPreview("export-format", "export-format-inline");
+    try {
+        bindDropdownPreview("size-preset", "size-preset-inline", value => {
+            if (customFields) customFields.classList.toggle("hidden", value !== "custom");
+            updateSizeHint();
+        });
+        bindDropdownPreview("export-format", "export-format-inline");
+    } catch (_) {}
 
     ["slide-count", "custom-w", "custom-h"].forEach(id => {
         const el = document.getElementById(id);
@@ -398,11 +402,17 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    document.getElementById("btn-create-canvas") .addEventListener("click", createCanvas);
-    document.getElementById("btn-add-guides")    .addEventListener("click", addGuides);
-    document.getElementById("btn-clear-guides")  .addEventListener("click", clearGuides);
-    document.getElementById("btn-crop-slides")   .addEventListener("click", cropSlides);
-    document.getElementById("btn-export-slides") .addEventListener("click", exportSlides);
+    const btnCreate = document.getElementById("btn-create-canvas");
+    const btnAddGuides = document.getElementById("btn-add-guides");
+    const btnClearGuides = document.getElementById("btn-clear-guides");
+    const btnCrop = document.getElementById("btn-crop-slides");
+    const btnExport = document.getElementById("btn-export-slides");
+
+    if (btnCreate) btnCreate.addEventListener("click", createCanvas);
+    if (btnAddGuides) btnAddGuides.addEventListener("click", addGuides);
+    if (btnClearGuides) btnClearGuides.addEventListener("click", clearGuides);
+    if (btnCrop) btnCrop.addEventListener("click", cropSlides);
+    if (btnExport) btnExport.addEventListener("click", exportSlides);
 
     if (customFields) customFields.classList.toggle("hidden", getVal("size-preset") !== "custom");
     updateSizeHint();
