@@ -29,8 +29,20 @@ function showError(label, err) {
     console.error(label, err);
 }
 
+function getDropdownValue(el) {
+    if (!el) return "";
+    const selected = el.querySelector("sp-menu-item[selected]");
+    if (selected) return selected.getAttribute("value") || "";
+    if (el.value) return el.value;
+    const ariaSelected = el.querySelector("sp-menu-item[aria-selected='true']");
+    if (ariaSelected) return ariaSelected.getAttribute("value") || "";
+    const first = el.querySelector("sp-menu-item");
+    return first ? (first.getAttribute("value") || "") : "";
+}
+
 function getVal(id) {
     const el = document.getElementById(id);
+    if (el && el.tagName === "SP-DROPDOWN") return getDropdownValue(el);
     return el ? (el.value || "") : "";
 }
 
@@ -295,75 +307,89 @@ async function exportSlides() {
     setStatus(`✓ All ${count} slides exported as ${exportFormat.toUpperCase()}!`, "success");
 }
 
-// ─── Boot ─────────────────────────────────────────────────────────────────────
+function syncDropdownSelection(dropdownId, textTargetId, forcedValue) {
+    const dropdown = document.getElementById(dropdownId);
+    const textTarget = document.getElementById(textTargetId);
+    if (!dropdown) return;
 
-function initDropdown(triggerId, listId, hiddenInputId, onChange) {
-    const trigger = document.getElementById(triggerId);
-    const list    = document.getElementById(listId);
-    const input   = document.getElementById(hiddenInputId);
-    if (!trigger || !list || !input) return;
+    const value = forcedValue || getDropdownValue(dropdown);
+    const item =
+        dropdown.querySelector(`sp-menu-item[value="${value}"]`) ||
+        dropdown.querySelector("sp-menu-item[selected]") ||
+        dropdown.querySelector("sp-menu-item");
 
-    const items = list.querySelectorAll(".custom-select-item");
+    if (!item) return;
 
-    // Highlight initial selection
-    items.forEach(item => {
-        if (item.dataset.value === input.value) item.classList.add("selected");
+    const itemValue = item.getAttribute("value") || "";
+    dropdown.value = itemValue;
+
+    dropdown.querySelectorAll("sp-menu-item").forEach(menuItem => {
+        const menuValue = menuItem.getAttribute("value") || "";
+        if (menuValue === itemValue) menuItem.setAttribute("selected", "");
+        else menuItem.removeAttribute("selected");
     });
 
-    // Toggle list open/close
-    trigger.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const isOpen = !list.classList.contains("hidden");
-        closeAllDropdowns();
-        if (!isOpen) {
-            list.classList.remove("hidden");
-            trigger.classList.add("open");
-        }
-    });
-
-    // Handle item selection
-    items.forEach(item => {
-        item.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const val   = item.dataset.value;
-            const label = item.textContent.trim();
-
-            input.value = val;
-
-            const arrow = trigger.querySelector(".custom-select-arrow");
-            trigger.textContent = label;
-            if (arrow) trigger.appendChild(arrow);
-
-            items.forEach(i => i.classList.remove("selected"));
-            item.classList.add("selected");
-
-            closeAllDropdowns();
-
-            if (onChange) onChange(val);
-        });
-    });
+    if (textTarget) textTarget.textContent = item.textContent.trim();
 }
 
-function closeAllDropdowns() {
-    document.querySelectorAll(".custom-select-list").forEach(l => l.classList.add("hidden"));
-    document.querySelectorAll(".custom-select-trigger").forEach(t => t.classList.remove("open"));
+function bindDropdownPreview(dropdownId, textTargetId, onSync) {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown) return;
+
+    const getEventValue = event => {
+        if (event && event.target && event.target.value) return event.target.value;
+        return getDropdownValue(dropdown);
+    };
+
+    const apply = nextValue => {
+        syncDropdownSelection(dropdownId, textTargetId, nextValue);
+        if (onSync) onSync(getDropdownValue(dropdown));
+    };
+
+    const handleClickSelection = event => {
+        const target = event.target;
+        if (!target || typeof target.closest !== "function") return;
+        const item = target.closest("sp-menu-item");
+        if (item) apply(item.getAttribute("value") || "");
+    };
+
+    apply(getDropdownValue(dropdown));
+
+    dropdown.addEventListener("change", event => apply(getEventValue(event)));
+    dropdown.addEventListener("input", event => apply(getEventValue(event)));
+    dropdown.addEventListener("click", handleClickSelection);
+
+    const menu = dropdown.querySelector("sp-menu");
+    if (menu) {
+        menu.addEventListener("change", event => apply(getEventValue(event)));
+        menu.addEventListener("click", handleClickSelection);
+    }
+
+    dropdown.querySelectorAll("sp-menu-item").forEach(item => {
+        item.addEventListener("click", () => apply(item.getAttribute("value") || ""));
+        item.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+                apply(item.getAttribute("value") || "");
+            }
+        });
+    });
+
+    const observer = new MutationObserver(() => apply(getDropdownValue(dropdown)));
+    observer.observe(dropdown, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["selected", "value"]
+    });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     const customFields = document.getElementById("custom-fields");
-
-    // Wire up custom dropdowns
-    initDropdown("preset-trigger", "preset-list", "size-preset", (val) => {
-        customFields.classList.toggle("hidden", val !== "custom");
+    bindDropdownPreview("size-preset", "size-preset-inline", value => {
+        if (customFields) customFields.classList.toggle("hidden", value !== "custom");
         updateSizeHint();
     });
+    bindDropdownPreview("export-format", "export-format-inline");
 
-    initDropdown("format-trigger", "format-list", "export-format", null);
-
-    // Close dropdowns when clicking outside
-    document.addEventListener("click", closeAllDropdowns);
-
-    // Size hint updates
     ["slide-count", "custom-w", "custom-h"].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -372,12 +398,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Button wiring
     document.getElementById("btn-create-canvas") .addEventListener("click", createCanvas);
     document.getElementById("btn-add-guides")    .addEventListener("click", addGuides);
     document.getElementById("btn-clear-guides")  .addEventListener("click", clearGuides);
     document.getElementById("btn-crop-slides")   .addEventListener("click", cropSlides);
     document.getElementById("btn-export-slides") .addEventListener("click", exportSlides);
 
+    if (customFields) customFields.classList.toggle("hidden", getVal("size-preset") !== "custom");
     updateSizeHint();
 });
