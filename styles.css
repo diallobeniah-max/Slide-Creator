@@ -96,10 +96,36 @@ body {
     flex: 1;
 }
 
-/* ── Spectrum components sizing ───────────────────────────────────────── */
-sp-textfield { width: 100px; }
-sp-picker    { width: 140px; }
-sp-button.full-width { width: 100%; }
+/* ── Native select (replaces sp-picker for reliable value display) ─── */
+.native-select {
+    width: 140px;
+    background: #1e1e1e;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-size: 12px;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 4px 24px 4px 8px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23aaa'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    cursor: pointer;
+    outline: none;
+    height: 28px;
+}
+
+.native-select:focus {
+    border-color: var(--accent-color);
+}
+
+.native-select option {
+    background: #2b2b2b;
+    color: #e0e0e0;
+}
+
+
 
 /* ── Hidden ───────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }

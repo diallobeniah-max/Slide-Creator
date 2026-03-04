@@ -300,39 +300,13 @@ async function exportSlides() {
 
 document.addEventListener("DOMContentLoaded", () => {
     const presetPicker = document.getElementById("size-preset");
-    const formatPicker = document.getElementById("export-format");
     const customFields = document.getElementById("custom-fields");
 
-    // Sets a picker's visible label from whichever sp-menu-item has [selected]
-    // or from picker.value — deferred so UXP has settled the value first
-    function syncPickerLabel(picker) {
-        if (!picker) return;
-        setTimeout(() => {
-            const val = picker.value;
-            if (!val) return;
-            const item = picker.querySelector(`sp-menu-item[value="${val}"]`);
-            const label = item ? item.textContent.trim() : val;
-            picker.label = label;
-            picker.setAttribute("label", label);
-        }, 0);
-    }
-
-    // Preset picker — change only (click fires before value settles)
     if (presetPicker) {
         presetPicker.addEventListener("change", () => {
-            syncPickerLabel(presetPicker);
-            const val = presetPicker.value;
-            customFields.classList.toggle("hidden", val !== "custom");
-            setTimeout(updateSizeHint, 0);
+            customFields.classList.toggle("hidden", presetPicker.value !== "custom");
+            updateSizeHint();
         });
-        // Set initial label on load
-        syncPickerLabel(presetPicker);
-    }
-
-    // Format picker
-    if (formatPicker) {
-        formatPicker.addEventListener("change", () => syncPickerLabel(formatPicker));
-        syncPickerLabel(formatPicker);
     }
 
     ["slide-count", "custom-w", "custom-h"].forEach(id => {
