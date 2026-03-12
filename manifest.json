@@ -1,6 +1,6 @@
 {
     "id": "com.yourname.instagramslidecreator",
-    "name": "Instagram Slide Creator",
+    "name": "Slide Creator",
     "version": "1.0.1",
     "main": "index.html",
     "manifestVersion": 5,
@@ -15,7 +15,7 @@
             "type": "panel",
             "id": "instagramSlidePanel",
             "label": {
-                "default": "Instagram Slide Creator"
+                "default": "Slide Creator"
             },
             "icons": [
                 {
