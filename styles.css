@@ -17,12 +17,17 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body {
+    height: 100%;
+}
+
 body {
     background-color: var(--bg-color);
     color: var(--text-color);
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 12px;
     overflow-x: hidden;
+    overflow-y: auto; /* Ensure body can scroll vertically */
     line-height: 1.4;
 }
 
@@ -34,6 +39,7 @@ body {
     padding: var(--spacing-l);
     max-width: 400px;
     margin: 0 auto;
+    overflow-y: auto; /* Add vertical scrollbar if content overflows */
 }
 
 /* ── Header ───────────────────────────────────────────────────────────── */
@@ -190,6 +196,82 @@ input[type="number"] { cursor: text !important; }
 .row-2 { display: flex; gap: var(--spacing-s); }
 .row-2 sp-button { flex: 1; }
 
+/* ── Slide Thumbnails ─────────────────────────────────────────────────── */
+.slide-thumbnails-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-s);
+    padding: var(--spacing-s);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-s);
+    min-height: 80px; /* Adjust as needed */
+    align-items: center;
+    justify-content: center;
+}
+
+.slide-thumbnail {
+    position: relative;
+    width: 60px; /* Adjust as needed */
+    height: 60px; /* Adjust as needed */
+    border: 2px solid transparent;
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+    cursor: grab;
+    transition: border-color 0.2s ease-in-out;
+}
+
+.slide-thumbnail.dragging {
+    opacity: 0.5;
+}
+
+.slide-thumbnail.selected {
+    border-color: var(--accent-color);
+}
+
+.slide-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.slide-thumbnail-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 10px;
+    text-align: center;
+    padding: 2px 0;
+}
+
+.slide-move-controls {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: flex;
+    gap: 2px;
+    z-index: 2;
+}
+
+.slide-move-button {
+    width: 16px;
+    height: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1;
+    border-radius: 2px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.slide-move-button:active {
+    transform: scale(0.95);
+}
+
 /* ── Action Groups ────────────────────────────────────────────────────── */
 .action-group {
     display: flex;
@@ -261,4 +343,86 @@ input[type="number"] { cursor: text !important; }
     word-break: break-word;
     max-height: 100px;
     overflow-y: auto;
+}
+
+/* ── Instagram Preview ────────────────────────────────────────────────── */
+.instagram-preview-container {
+    display: flex;
+    justify-content: center;
+    padding: var(--spacing-s);
+    background: #1a1a1a; /* Dark background for the mock-up */
+    border-radius: var(--radius-m);
+}
+
+.instagram-mockup {
+    width: 320px; /* Mock Instagram post width */
+    background: #000;
+    border: 1px solid #333;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.instagram-header {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid #222;
+}
+
+.instagram-avatar {
+    width: 30px;
+    height: 30px;
+    background: #333;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.instagram-username {
+    color: #fff;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.instagram-carousel {
+    display: flex;
+    overflow-x: scroll; /* Enable horizontal scrolling for carousel */
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    background: #000;
+}
+
+.instagram-carousel::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for a cleaner look */
+}
+
+.instagram-slide-preview {
+    flex: 0 0 100%; /* Each slide takes full width of the carousel */
+    width: 100%;
+    height: auto; /* Maintain aspect ratio */
+    scroll-snap-align: start;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #222; /* Placeholder background */
+    color: #fff;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.instagram-slide-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.instagram-footer {
+    display: flex;
+    padding: 8px;
+    border-top: 1px solid #222;
+    justify-content: space-around;
+}
+
+.instagram-icon {
+    font-size: 20px;
+    color: #fff;
 }
