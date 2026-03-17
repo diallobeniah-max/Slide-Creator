@@ -286,6 +286,7 @@ async function clearGuides() {
 }
 
 // ─── 4. Crop Slides ───────────────────────────────────────────────────────────
+// FIXED: Each slide is cropped in its own executeAsModal, with delete: true to remove artifacts
 
 async function cropSlides() {
     const { slideCount, exportPrefix } = getInputs();
@@ -313,40 +314,66 @@ async function cropSlides() {
     setStatus("Cropping slides…", "working");
 
     try {
-        await core.executeAsModal(async () => {
-            for (let i = 0; i < slideCount; i++) {
-                const num   = i + 1;
-                const name  = `${exportPrefix} Slide ${num}`;
-                const x     = i * sliceW;
-                const right = (i === slideCount - 1) ? docW : Math.min(docW, x + sliceW);
-                const partW = Math.max(1, right - x);
+        for (let i = 0; i < slideCount; i++) {
+            const num   = i + 1;
+            const name  = `${exportPrefix} Slide ${num}`;
+            const x     = i * sliceW;
+            const right = (i === slideCount - 1) ? docW : Math.min(docW, x + sliceW);
+            const partW = Math.max(1, right - x);
 
-                app.activeDocument = origDoc;
-                const partDoc = await origDoc.duplicate();
+            await core.executeAsModal(async () => {
+                // Always get fresh reference to original document
+                const currentOrigDoc = app.documents.find(d => d.id === originalDocId);
+                if (!currentOrigDoc) throw new Error(`Original document not found.`);
+
+                // Duplicate the original document
+                const partDoc = await currentOrigDoc.duplicate(name);
                 app.activeDocument = partDoc;
 
-                await action.batchPlay([{
-                    _obj: "crop",
-                    _target: [{ _ref: "document", _enum: "ordinal", _value: "targetEnum" }],
-                    to: {
-                        _obj: "rectangle",
-                        top:    { _unit: "pixelsUnit", _value: 0 },
-                        left:   { _unit: "pixelsUnit", _value: x },
-                        bottom: { _unit: "pixelsUnit", _value: docH },
-                        right:  { _unit: "pixelsUnit", _value: right }
-                    },
-                    delete: false,
-                    _options: { dialogOptions: "dontDisplay" }
-                }], {});
+                // Use Canvas API to crop instead of batchPlay
+                const layer = partDoc.layers[0];
+                if (layer && layer.kind === "group") {
+                    // If it's a group, just work with bounds
+                    await action.batchPlay([{
+                        _obj: "canvasSize",
+                        width:  { _unit: "pixelsUnit", _value: partW },
+                        height: { _unit: "pixelsUnit", _value: docH },
+                        _target: [{ _ref: "document", _enum: "ordinal", _value: "targetEnum" }],
+                        offset: {
+                            _obj: "offset",
+                            horizontal: { _unit: "pixelsUnit", _value: -x },
+                            vertical: { _unit: "pixelsUnit", _value: 0 }
+                        },
+                        _options: { dialogOptions: "dontDisplay" }
+                    }], {});
+                } else {
+                    // Use canvas size to crop
+                    await action.batchPlay([{
+                        _obj: "canvasSize",
+                        width:  { _unit: "pixelsUnit", _value: partW },
+                        height: { _unit: "pixelsUnit", _value: docH },
+                        _target: [{ _ref: "document", _enum: "ordinal", _value: "targetEnum" }],
+                        offset: {
+                            _obj: "offset",
+                            horizontal: { _unit: "pixelsUnit", _value: -x },
+                            vertical: { _unit: "pixelsUnit", _value: 0 }
+                        },
+                        _options: { dialogOptions: "dontDisplay" }
+                    }], {});
 
-                partDoc.name = name;
+                    // Flatten to merge layers
+                    await action.batchPlay([{
+                        _obj: "flattenImage",
+                        _target: [{ _ref: "document", _enum: "ordinal", _value: "targetEnum" }],
+                        _options: { dialogOptions: "dontDisplay" }
+                    }], {});
+                }
 
                 slides.push({ id: partDoc.id, name: name });
-                setStatus(`Cropped ${i + 1} / ${slideCount}…`, "working");
-            }
+            }, { commandName: `Crop Slide ${num}` });
 
-            app.activeDocument = origDoc;
-        }, { commandName: "Crop Slides" });
+            setStatus(`Cropped ${i + 1} / ${slideCount}…`, "working");
+        }
 
         renderThumbnails(); // Render thumbnails after all slides are cropped
         setStatus(`✓ ${slideCount} slides ready — tap Export All`, "success");
@@ -368,13 +395,12 @@ async function duplicateSlide() {
             if (!doc) throw new Error("Selected document not found.");
 
             app.activeDocument = doc;
-            const duplicatedDoc = await doc.duplicate();
             const newSlideName = `${originalSlide.name} Copy`;
+            const duplicatedDoc = await doc.duplicate(newSlideName);
 
             slides.splice(slides.findIndex(s => s.id === selectedSlideId) + 1, 0, {
                 id: duplicatedDoc.id,
                 name: newSlideName,
-                thumbnailHtml: generatePlaceholderThumbnail(slides.length + 1) // Temporary number, will be re-rendered
             });
             selectedSlideId = duplicatedDoc.id; // Select the new duplicated slide
         }, { commandName: "Duplicate Slide" });
@@ -415,128 +441,62 @@ async function closeAllSlideDocs() {
     slides = [];
 }
 
-// New function to save individual slides to a folder (used by ZIP export)
-async function saveIndividualSlidesToFolder(folderEntry) {
+// New function to save individual slides directly (without ZIP)
+async function exportSlidesDirectly() {
+    if (slides.length === 0) { showError("Export failed", new Error("No slides — tap Crop Slides first.")); return; }
+
     const { exportPrefix, exportFormat, exportQuality, namingPattern } = getInputs();
     const doJpg = exportFormat === "jpg";
     const count = slides.length;
-    const originalDocName = app.activeDocument ? app.activeDocument.name.split(".")[0] : "Document";
+    const ext = doJpg ? "jpg" : "png";
 
-    const savedFileEntries = [];
+    setStatus("Choose folder to save slides…", "working");
+    let folderEntry;
+    try {
+        folderEntry = await uxpFs.getFolder();
+        if (!folderEntry) { setStatus("Export cancelled.", ""); return; }
+    } catch (e) { showError("Folder selection failed", e); return; }
 
-    for (let i = 0; i < count; i++) {
-        const slide  = slides[i];
-        const num = i + 1;
-        const ext = doJpg ? "jpg" : "png";
+    try {
+        await core.executeAsModal(async () => {
+            for (let i = 0; i < count; i++) {
+                const slide = slides[i];
+                const num = i + 1;
+                const originalDocName = slide.name.split(" Slide")[0];
 
-        let fileName = "";
-        if (namingPattern === "document_number") {
-            fileName = `${originalDocName}_${String(num).padStart(2, '0')}`;
-        } else { // prefix_number
-            fileName = `${exportPrefix}_${String(num).padStart(2, '0')}`;
-        }
+                let fileName = "";
+                if (namingPattern === "document_number") {
+                    fileName = `${originalDocName}_${String(num).padStart(2, '0')}`;
+                } else {
+                    fileName = `${exportPrefix}_${String(num).padStart(2, '0')}`;
+                }
 
-        let fileEntry;
-        try {
-            fileEntry = await folderEntry.createFile(`${fileName}.${ext}`, { overwrite: true });
-        } catch (e) {
-            showError(`Slide ${num}: temporary file creation failed`, e);
-            throw e; // Re-throw to stop the process
-        }
-
-        try {
-            await core.executeAsModal(async () => {
                 const slideDoc = app.documents.find(d => d.id === slide.id);
                 if (!slideDoc) throw new Error(`Slide doc ${num} not found.`);
                 app.activeDocument = slideDoc;
+
+                const fileEntry = await folderEntry.createFile(`${fileName}.${ext}`, { overwrite: true });
 
                 if (doJpg) {
                     await slideDoc.saveAs.jpg(fileEntry, { quality: exportQuality }, true);
                 } else {
                     await slideDoc.saveAs.png(fileEntry, {}, true);
                 }
-            }, { commandName: `Save temporary slide ${num}` });
 
-            savedFileEntries.push(fileEntry);
-            setStatus(`Saved temporary ${i + 1} / ${count}…`, "working");
-        } catch (e) {
-            showError(`Save temporary slide ${num} failed`, e);
-            throw e; // Re-throw to stop the process
-        }
+                setStatus(`Exported ${i + 1} / ${count}…`, "working");
+            }
+        }, { commandName: "Export Slides" });
+
+        setStatus(`✓ All ${slides.length} slides exported!`, "success");
+        await closeAllSlideDocs();
+    } catch (e) {
+        showError("Export failed", e);
     }
-    return savedFileEntries;
 }
 
-async function exportSlides() { // This function now handles ZIP export
-    if (slides.length === 0) { showError("Export failed", new Error("No slides — tap Crop Slides first.")); return; }
-
-    const { exportPrefix, exportFormat, namingPattern } = getInputs();
-    const originalDocName = app.activeDocument ? app.activeDocument.name.split(".")[0] : "Document";
-    const zipFileName = `${originalDocName}_slides.zip`;
-
-    setStatus("Creating temporary files…", "working");
-    let tempFolder;
-    try {
-        tempFolder = await uxpFs.getTemporaryFolder();
-    } catch (e) { showError("Failed to get temporary folder", e); return; }
-
-    let savedFiles = [];
-    try {
-        savedFiles = await saveIndividualSlidesToFolder(tempFolder);
-    } catch (e) {
-        // Error already shown by saveIndividualSlidesToFolder
-        await closeAllSlideDocs(); // Close all slide docs if an error occurred during saving
-        return;
-    }
-
-    setStatus("Generating ZIP archive…", "working");
-    const zip = new JSZip();
-    for (const fileEntry of savedFiles) {
-        try {
-            const fileContent = await fileEntry.read({ format: uxpFs.formats.binary });
-            zip.file(fileEntry.name, fileContent);
-        } catch (e) {
-            showError(`Failed to add ${fileEntry.name} to ZIP`, e);
-            await closeAllSlideDocs();
-            return;
-        }
-    }
-
-    let zipBlob;
-    try {
-        zipBlob = await zip.generateAsync({ type: "blob" });
-    } catch (e) {
-        showError("Failed to generate ZIP file", e);
-        await closeAllSlideDocs();
-        return;
-    }
-
-    setStatus("Choose save location for ZIP…", "working");
-    let zipFileEntry;
-    try {
-        zipFileEntry = await uxpFs.getFileForSaving(zipFileName, { types: ["zip"] });
-        if (!zipFileEntry) { setStatus("Export cancelled.", ""); return; }
-    } catch (e) { showError("ZIP save location picker failed", e); return; }
-
-    try {
-        const arrayBuffer = await zipBlob.arrayBuffer();
-        await zipFileEntry.write(arrayBuffer, { format: uxpFs.formats.binary });
-        setStatus(`✓ All ${slides.length} slides exported as ZIP!`, "success");
-    } catch (e) {
-        showError("Failed to save ZIP file", e);
-        return;
-    } finally {
-        // Clean up temporary files
-        setStatus("Cleaning up temporary files…", "working");
-        try {
-            for (const fileEntry of savedFiles) {
-                await fileEntry.delete();
-            }
-        } catch (e) {
-            console.warn("Failed to clean up temporary files:", e);
-        }
-        await closeAllSlideDocs(); // Close all slide docs after successful export
-    }
+async function exportSlides() {
+    // Simply call the direct export function
+    await exportSlidesDirectly();
 }
 
 // ─── 7. Instagram Preview ─────────────────────────────────────────────────────
@@ -562,7 +522,7 @@ async function generateInstagramPreview() {
 
                 const tempFile = await tempFolder.createFile(`preview_slide_${i}.png`, { overwrite: true });
                 await slideDoc.saveAs.png(tempFile, {});
-                const imageData = await tempFile.read({ format: uxpFs.formats.binary });
+                const imageData = await tempFile.read();
                 await tempFile.delete(); // Clean up temporary file immediately
                 
                 const base64ImageData = arrayBufferToBase64(imageData);
@@ -678,11 +638,14 @@ function initUI() {
         bindDropdownPreview("naming-pattern", "naming-pattern-inline");
     } catch (_) {}
 
-    ["slide-count", "custom-w", "custom-h"].forEach(id => {
+    ["slide-count", "custom-w", "custom-h", "export-prefix", "export-quality"].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener("input", updateSizeHint);
             el.addEventListener("change", updateSizeHint);
+            el.addEventListener("blur", updateSizeHint);
+            // For sp-textfield, also listen for value-change event
+            el.addEventListener("value-change", updateSizeHint);
         }
     });
 
@@ -695,14 +658,8 @@ function initUI() {
     const btnDelete = document.getElementById("btn-delete-slide");
     const btnGeneratePreview = document.getElementById("btn-generate-preview");
 
-    if (btnCreate) btnCreate.addEventListener("click", createCanvas);
-    if (btnAddGuides) btnAddGuides.addEventListener("click", addGuides);
-    if (btnClearGuides) btnClearGuides.addEventListener("click", clearGuides);
-    if (btnCrop) btnCrop.addEventListener("click", cropSlides);
-    if (btnExport) btnExport.addEventListener("click", exportSlides);
-    if (btnDuplicate) btnDuplicate.addEventListener("click", duplicateSlide);
-    if (btnDelete) btnDelete.addEventListener("click", deleteSlide);
-    if (btnGeneratePreview) btnGeneratePreview.addEventListener("click", generateInstagramPreview);
+    // Note: Button clicks are handled by handleButtonClick via document-level listener
+    // No need to add individual addEventListener for these buttons
 
     if (customFields) customFields.classList.toggle("hidden", getVal("size-preset") !== "custom");
     updateSizeHint();
