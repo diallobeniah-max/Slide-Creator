@@ -62,8 +62,7 @@ function getInputs() {
         slideCount:    Math.max(1, parseInt(getVal("slide-count")) || 6),
         exportPrefix:  (getVal("export-prefix") || "Slide").trim(),
         exportFormat:  getVal("export-format") || "jpg",
-        exportQuality: Math.min(12, Math.max(1, parseInt(getVal("export-quality")) || 10)),
-        namingPattern: getVal("naming-pattern") || "document_number",
+        exportQuality: Math.min(12, Math.max(1, parseInt(getVal("export-quality")) || 10))
     };
 }
 
@@ -430,7 +429,7 @@ async function closeAllSlideDocs() {
 async function exportSlidesDirectly() {
     if (slides.length === 0) { showError("Export failed", new Error("No slides — tap Crop Slides first.")); return; }
 
-    const { exportPrefix, exportFormat, exportQuality, namingPattern } = getInputs();
+    const { exportPrefix, exportFormat, exportQuality } = getInputs();
     const doJpg = exportFormat === "jpg";
     const count = slides.length;
     const ext = doJpg ? "jpg" : "png";
@@ -449,12 +448,7 @@ async function exportSlidesDirectly() {
                 const num = i + 1;
                 const originalDocName = slide.name.split(" Slide")[0];
 
-                let fileName = "";
-                if (namingPattern === "document_number") {
-                    fileName = `${originalDocName}_${String(num).padStart(2, '0')}`;
-                } else {
-                    fileName = `${exportPrefix}_${String(num).padStart(2, '0')}`;
-                }
+                const fileName = `${originalDocName}_${String(num).padStart(2, '0')}`;
 
                 const slideDoc = app.documents.find(d => d.id === slide.id);
                 if (!slideDoc) throw new Error(`Slide doc ${num} not found.`);
@@ -700,7 +694,7 @@ function initUI() {
             updateSizeHint();
         });
         bindDropdownPreview("export-format", "export-format-inline");
-        bindDropdownPreview("naming-pattern", "naming-pattern-inline");
+        bindDropdownPreview("export-quality", "export-quality-inline");
     } catch (_) {}
 
     ["slide-count", "custom-w", "custom-h", "export-prefix", "export-quality"].forEach(id => {
