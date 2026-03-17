@@ -72,22 +72,7 @@
         </div>
     </section>
 
-    <!-- ── SECTION 3: SLIDE MANAGEMENT ── -->
-    <section class="card slide-management-card">
-        <div class="section-header">
-            <span class="section-icon">🖼️</span>
-            <span class="section-title">Slide Management</span>
-        </div>
-        <div id="slide-thumbnails-container" class="slide-thumbnails-container">
-            <!-- Slide thumbnails will be dynamically added here -->
-        </div>
-        <div class="row-2">
-            <sp-button id="btn-duplicate-slide" variant="secondary" size="s">Duplicate Slide</sp-button>
-            <sp-button id="btn-delete-slide" variant="secondary" size="s">Delete Slide</sp-button>
-        </div>
-    </section>
-
-    <!-- ── SECTION 4: EXPORT ── -->
+    <!-- ── SECTION 3: EXPORT ── -->
     <section class="card">
         <div class="section-header">
             <span class="section-icon">📤</span>
@@ -109,7 +94,7 @@
 
         <div class="field-row">
             <span class="field-label">JPG Quality (1–12)</span>
-            <sp-textfield id="export-quality" value="10" type="number" size="s"></sp-textfield>
+            <sp-textfield id="export-quality" value="12" type="number" size="s"></sp-textfield>
         </div>
 
         <div class="field-row">
@@ -140,6 +125,28 @@
             </div>
             <sp-button id="btn-export-slides" variant="cta" size="m" class="full-width">Export All Slides</sp-button>
         </div>
+    </section>
+
+    <!-- ── SECTION 4: DELETE SLIDES ── -->
+    <section class="card">
+        <div class="section-header">
+            <span class="section-icon">🗑️</span>
+            <span class="section-title">Delete Slides</span>
+        </div>
+
+        <div id="delete-slides-container" class="delete-slides-container hidden">
+            <div class="delete-header">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="select-all-checkbox" />
+                    <span>Select All</span>
+                </label>
+            </div>
+            <div id="slide-checklist" class="slide-checklist"></div>
+        </div>
+
+        <div id="no-slides-message" class="no-slides-message">No slides to delete</div>
+
+        <sp-button id="btn-delete-slides" variant="secondary" size="m" class="full-width">Delete Selected Slides</sp-button>
     </section>
 
     <!-- STATUS -->

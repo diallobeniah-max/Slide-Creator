@@ -75,8 +75,29 @@ function updateSizeHint() {
     } catch (_) {}
 }
 
-// ─── Slide Thumbnail Management ───────────────────────────────────────────────
+// ─── Generate thumbnail preview for a slide
+async function generateSlideThumbnail(slideId) {
+    try {
+        const tempFolder = await uxpFs.getTemporaryFolder();
+        await core.executeAsModal(async () => {
+            const slideDoc = app.documents.find(d => d.id === slideId);
+            if (!slideDoc) throw new Error("Slide document not found.");
+            
+            app.activeDocument = slideDoc;
+            const tempFile = await tempFolder.createFile(`thumb_${slideId}.png`, { overwrite: true });
+            await slideDoc.saveAs.png(tempFile, {});
+            const imageData = await tempFile.read();
+            await tempFile.delete();
+            
+            return arrayBufferToBase64(imageData);
+        }, { commandName: "Generate Thumbnail" });
+    } catch (e) {
+        console.warn(`Failed to generate thumbnail for slide ${slideId}:`, e);
+        return null;
+    }
+}
 
+// ─── Improved renderThumbnails with real preview images
 function renderThumbnails() {
     const container = document.getElementById("slide-thumbnails-container");
     if (!container) return;
@@ -87,12 +108,18 @@ function renderThumbnails() {
         const thumbnailElement = document.createElement("div");
         thumbnailElement.className = "slide-thumbnail";
         thumbnailElement.setAttribute("draggable", "true");
-        thumbnailElement.dataset.slideId = slide.id; // Store actual Photoshop doc ID
-        thumbnailElement.dataset.slideNumber = index + 1; // Store display number
+        thumbnailElement.dataset.slideId = slide.id;
+        thumbnailElement.dataset.slideNumber = index + 1;
 
         const imgElement = document.createElement("img");
-        imgElement.src = `https://via.placeholder.com/60x60?text=${index + 1}`;
+        // Use the thumbnail data URL if available, otherwise use placeholder
+        if (slide.thumbnailBase64) {
+            imgElement.src = `data:image/png;base64,${slide.thumbnailBase64}`;
+        } else {
+            imgElement.src = `https://via.placeholder.com/60x60?text=${index + 1}`;
+        }
         imgElement.alt = `Slide ${index + 1}`;
+        imgElement.style.cursor = "grab";
 
         const labelElement = document.createElement("span");
         labelElement.className = "slide-thumbnail-label";
@@ -137,7 +164,7 @@ function renderThumbnails() {
         });
 
         thumbnailElement.addEventListener("dragover", (e) => {
-            e.preventDefault(); // Allow drop
+            e.preventDefault();
             if (e.target.closest(".slide-thumbnail") !== thumbnailElement) {
                 thumbnailElement.classList.add("drag-over");
             }
@@ -175,7 +202,8 @@ function selectSlide(slideId) {
     selectedSlideId = slideId;
     const thumbnails = document.querySelectorAll(".slide-thumbnail");
     thumbnails.forEach(thumb => {
-        if (thumb.dataset.slideId === String(slideId)) {
+        const thumbSlideId = parseInt(thumb.dataset.slideId);
+        if (thumbSlideId === slideId) {
             thumb.classList.add("selected");
         } else {
             thumb.classList.remove("selected");
@@ -375,56 +403,13 @@ async function cropSlides() {
             setStatus(`Cropped ${i + 1} / ${slideCount}…`, "working");
         }
 
-        renderThumbnails(); // Render thumbnails after all slides are cropped
-        setStatus(`✓ ${slideCount} slides ready — tap Export All`, "success");
+        updateDeleteSlidesUI(); // Update delete UI with new slides
+        setStatus(`✓ ${slideCount} slides cropped — ready to export`, "success");
     } catch (e) { showError("Crop Slides failed", e); }
 }
 
 // ─── 5. Slide Management Actions ──────────────────────────────────────────────
-
-async function duplicateSlide() {
-    if (!selectedSlideId) { showError("Duplicate failed", new Error("No slide selected.")); return; }
-
-    setStatus("Duplicating slide…", "working");
-    try {
-        await core.executeAsModal(async () => {
-            const originalSlide = slides.find(s => s.id === selectedSlideId);
-            if (!originalSlide) throw new Error("Selected slide not found.");
-
-            const doc = app.documents.find(d => d.id === selectedSlideId);
-            if (!doc) throw new Error("Selected document not found.");
-
-            app.activeDocument = doc;
-            const newSlideName = `${originalSlide.name} Copy`;
-            const duplicatedDoc = await doc.duplicate(newSlideName);
-
-            slides.splice(slides.findIndex(s => s.id === selectedSlideId) + 1, 0, {
-                id: duplicatedDoc.id,
-                name: newSlideName,
-            });
-            selectedSlideId = duplicatedDoc.id; // Select the new duplicated slide
-        }, { commandName: "Duplicate Slide" });
-        renderThumbnails();
-        setStatus("✓ Slide duplicated!", "success");
-    } catch (e) { showError("Duplicate Slide failed", e); }
-}
-
-async function deleteSlide() {
-    if (!selectedSlideId) { showError("Delete failed", new Error("No slide selected.")); return; }
-
-    setStatus("Deleting slide…", "working");
-    try {
-        await core.executeAsModal(async () => {
-            const doc = app.documents.find(d => d.id === selectedSlideId);
-            if (doc) await doc.close(constants.SaveOptions.DONOTSAVECHANGES);
-
-            slides = slides.filter(s => s.id !== selectedSlideId);
-            selectedSlideId = slides.length > 0 ? slides[0].id : null; // Select first slide if available
-        }, { commandName: "Delete Slide" });
-        renderThumbnails();
-        setStatus("✓ Slide deleted!", "success");
-    } catch (e) { showError("Delete Slide failed", e); }
-}
+// (Removed - no longer needed)
 
 // ─── 6. Export All Slides ─────────────────────────────────────────────────────
 
@@ -497,6 +482,86 @@ async function exportSlidesDirectly() {
 async function exportSlides() {
     // Simply call the direct export function
     await exportSlidesDirectly();
+}
+
+// ─── Delete Slides ────────────────────────────────────────────────────────────
+
+function updateDeleteSlidesUI() {
+    const container = document.getElementById("delete-slides-container");
+    const noSlidesMsg = document.getElementById("no-slides-message");
+    const checklist = document.getElementById("slide-checklist");
+
+    if (slides.length === 0) {
+        container.classList.add("hidden");
+        noSlidesMsg.style.display = "block";
+        checklist.innerHTML = "";
+        return;
+    }
+
+    container.classList.remove("hidden");
+    noSlidesMsg.style.display = "none";
+
+    checklist.innerHTML = "";
+    slides.forEach((slide, index) => {
+        const item = document.createElement("div");
+        item.className = "slide-check-item";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.dataset.slideIndex = index;
+        checkbox.dataset.slideId = slide.id;
+
+        const label = document.createElement("label");
+        label.className = "slide-check-label";
+        label.textContent = `Slide ${index + 1}`;
+
+        item.appendChild(checkbox);
+        item.appendChild(label);
+        checklist.appendChild(item);
+    });
+}
+
+function handleSelectAllChange(event) {
+    const selectAll = event.target.checked;
+    const checkboxes = document.querySelectorAll("#slide-checklist input[type='checkbox']");
+    checkboxes.forEach(cb => {
+        cb.checked = selectAll;
+    });
+}
+
+async function deleteSelectedSlides() {
+    const checkboxes = document.querySelectorAll("#slide-checklist input[type='checkbox']:checked");
+    
+    if (checkboxes.length === 0) {
+        showError("Delete failed", new Error("No slides selected."));
+        return;
+    }
+
+    const indicesToDelete = Array.from(checkboxes).map(cb => parseInt(cb.dataset.slideIndex)).sort((a, b) => b - a);
+    const idsToDelete = Array.from(checkboxes).map(cb => parseInt(cb.dataset.slideId));
+
+    setStatus("Deleting selected slides…", "working");
+
+    try {
+        await core.executeAsModal(async () => {
+            for (const id of idsToDelete) {
+                const doc = app.documents.find(d => d.id === id);
+                if (doc) {
+                    await doc.close(constants.SaveOptions.DONOTSAVECHANGES);
+                }
+            }
+        }, { commandName: "Delete Slides" });
+
+        // Remove from slides array in reverse order to maintain correct indices
+        for (const index of indicesToDelete) {
+            slides.splice(index, 1);
+        }
+
+        updateDeleteSlidesUI();
+        setStatus(`✓ ${indicesToDelete.length} slide(s) deleted!`, "success");
+    } catch (e) {
+        showError("Delete Slides failed", e);
+    }
 }
 
 // ─── 7. Instagram Preview ─────────────────────────────────────────────────────
@@ -649,20 +714,18 @@ function initUI() {
         }
     });
 
-    const btnCreate = document.getElementById("btn-create-canvas");
-    const btnAddGuides = document.getElementById("btn-add-guides");
-    const btnClearGuides = document.getElementById("btn-clear-guides");
-    const btnCrop = document.getElementById("btn-crop-slides");
-    const btnExport = document.getElementById("btn-export-slides");
-    const btnDuplicate = document.getElementById("btn-duplicate-slide");
-    const btnDelete = document.getElementById("btn-delete-slide");
-    const btnGeneratePreview = document.getElementById("btn-generate-preview");
+    // Set up "Select All" checkbox for delete slides
+    const selectAllCheckbox = document.getElementById("select-all-checkbox");
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener("change", handleSelectAllChange);
+    }
 
     // Note: Button clicks are handled by handleButtonClick via document-level listener
     // No need to add individual addEventListener for these buttons
 
     if (customFields) customFields.classList.toggle("hidden", getVal("size-preset") !== "custom");
     updateSizeHint();
+    updateDeleteSlidesUI(); // Initialize delete slides UI
 }
 
 function handleButtonClick(event) {
@@ -684,11 +747,8 @@ function handleButtonClick(event) {
         case "btn-export-slides":
             exportSlides();
             break;
-        case "btn-duplicate-slide":
-            duplicateSlide();
-            break;
-        case "btn-delete-slide":
-            deleteSlide();
+        case "btn-delete-slides":
+            deleteSelectedSlides();
             break;
         case "btn-generate-preview":
             generateInstagramPreview();
