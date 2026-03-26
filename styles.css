@@ -143,25 +143,47 @@ input[type="number"] {
 .tab-group {
     width: 100%;
     display: flex;
-    justify-content: space-between;
-    gap: 18px;
-    padding: 2px 4px;
+    align-items: center;
+    gap: 8px;
+    padding: 2px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.tab-group sp-radio {
+.tab-button {
     flex: 1 1 0;
-    position: relative;
+    min-width: 0;
+    height: 34px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.72);
+    font: inherit;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
-.tab-group sp-radio:not(:last-child)::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    right: -10px;
-    width: 1px;
-    height: 14px;
-    transform: translateY(-50%);
-    background: rgba(255, 255, 255, 0.14);
+.tab-button:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.tab-button.active {
+    background: linear-gradient(180deg, rgba(91, 155, 240, 0.22), rgba(47, 125, 246, 0.14));
+    color: #f3f8ff;
+    box-shadow: inset 0 0 0 1px rgba(91, 155, 240, 0.34);
+}
+
+.tab-button:focus {
+    outline: none;
+}
+
+.tab-button:focus-visible {
+    box-shadow:
+        inset 0 0 0 1px rgba(91, 155, 240, 0.44),
+        0 0 0 1px rgba(91, 155, 240, 0.34);
 }
 
 .tab-panel {

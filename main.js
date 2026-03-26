@@ -1096,11 +1096,11 @@ function bindDropdownPreview(dropdownId, textTargetId, onSync) {
 function setActiveTab(tabName) {
   const tabGroup = document.getElementById("main-tabs");
   if (tabGroup) {
-    const selectedRadio = tabGroup.querySelector(`sp-radio[value="${tabName}"]`);
-    if (selectedRadio) {
-      tabGroup.querySelectorAll("sp-radio").forEach((radio) => radio.removeAttribute("checked"));
-      selectedRadio.setAttribute("checked", "");
-    }
+    tabGroup.querySelectorAll("[data-tab-button]").forEach((button) => {
+      const active = button.getAttribute("data-tab-button") === tabName;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
   }
 
   document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
@@ -1114,22 +1114,12 @@ function initTabs() {
   const tabGroup = document.getElementById("main-tabs");
   if (!tabGroup) return;
 
-  const sync = () => {
-    const checkedRadio = tabGroup.querySelector("sp-radio[checked]");
-    const value =
-      (checkedRadio && checkedRadio.getAttribute("value")) ||
-      tabGroup.value ||
-      tabGroup.selected ||
-      "artboard";
-    setActiveTab(value);
-  };
-
-  tabGroup.addEventListener("change", sync);
-  tabGroup.querySelectorAll("sp-radio").forEach((radio) => {
-    radio.addEventListener("click", () => setActiveTab(radio.getAttribute("value") || "artboard"));
+  tabGroup.querySelectorAll("[data-tab-button]").forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.getAttribute("data-tab-button") || "artboard"));
   });
 
-  sync();
+  const initialButton = tabGroup.querySelector("[data-tab-button].active") || tabGroup.querySelector("[data-tab-button]");
+  setActiveTab(initialButton ? initialButton.getAttribute("data-tab-button") || "artboard" : "artboard");
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────

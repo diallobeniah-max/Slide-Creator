@@ -22,11 +22,11 @@
             </section>
 
             <section class="tab-shell">
-                <sp-radio-group id="main-tabs" class="tab-group" horizontal>
-                    <sp-radio value="artboard" checked>Artboard</sp-radio>
-                    <sp-radio value="slide">Slide</sp-radio>
-                    <sp-radio value="export">Export</sp-radio>
-                </sp-radio-group>
+                <div id="main-tabs" class="tab-group" role="tablist" aria-label="Main sections">
+                    <button type="button" class="tab-button active" data-tab-button="artboard">Artboard</button>
+                    <button type="button" class="tab-button" data-tab-button="slide">Slide</button>
+                    <button type="button" class="tab-button" data-tab-button="export">Export</button>
+                </div>
             </section>
 
             <section class="tab-panel active" data-tab-panel="artboard">
