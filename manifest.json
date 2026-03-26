@@ -19,15 +19,15 @@
             },
             "icons": [
                 {
-                    "width": 24,
-                    "height": 24,
+                    "width": 23,
+                    "height": 23,
                     "path": "icon_24.png",
                     "scale": [1],
                     "theme": ["darkest", "dark", "medium", "light", "lightest"]
                 },
                 {
-                    "width": 24,
-                    "height": 24,
+                    "width": 23,
+                    "height": 23,
                     "path": "icon_48.png",
                     "scale": [2],
                     "theme": ["darkest", "dark", "medium", "light", "lightest"]
