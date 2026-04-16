@@ -7,18 +7,46 @@
   <body>
     <div class="panel">
       <div class="header">
-        <span class="header-icon">
-          <img src="icon_24.png" alt="" class="header-icon-image" />
-        </span>
-        <span class="header-title">Slide Creator</span>
+        <div class="header-brand">
+          <span class="header-icon">
+            <img src="icon_24.png" alt="" class="header-icon-image" />
+          </span>
+          <span class="header-title">Slide Creator</span>
+        </div>
+        <div class="header-actions" aria-label="History and view actions">
+          <div id="btn-undo" role="button" tabindex="0" class="header-icon-btn" data-action-button title="Undo" aria-label="Undo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#a8a8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 7 4 12l5 5"/>
+              <path d="M4 12h10a6 6 0 1 1 0 12"/>
+            </svg>
+          </div>
+          <div class="header-action-divider" aria-hidden="true"></div>
+          <div id="btn-redo" role="button" tabindex="0" class="header-icon-btn" data-action-button title="Redo" aria-label="Redo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#a8a8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 7 5 5-5 5"/>
+              <path d="M20 12H10a6 6 0 1 0 0 12"/>
+            </svg>
+          </div>
+          <div class="header-action-divider" aria-hidden="true"></div>
+          <div id="btn-fit-screen" role="button" tabindex="0" class="header-icon-btn" data-action-button title="Fit to Screen (Ctrl+0)" aria-label="Fit to Screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#a8a8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3"/>
+              <path d="M16 3h3a2 2 0 0 1 2 2v3"/>
+              <path d="M21 16v3a2 2 0 0 1-2 2h-3"/>
+              <path d="M8 21H5a2 2 0 0 1-2-2v-3"/>
+              <path d="m9 9 6 6"/>
+              <path d="m15 9-6 6"/>
+            </svg>
+          </div>
+        </div>
       </div>
 
-      <section class="history-shell">
+      <section class="history-shell hidden" aria-hidden="true">
         <div class="history-actions">
-          <sp-button id="btn-undo" variant="secondary" size="s">Undo</sp-button>
-          <sp-button id="btn-redo" variant="secondary" size="s">Redo</sp-button>
+          <sp-button id="btn-undo-legacy" variant="secondary" size="s">Undo</sp-button>
+          <sp-button id="btn-redo-legacy" variant="secondary" size="s">Redo</sp-button>
           <sp-button
-            id="btn-fit-screen"
+            id="btn-fit-screen-legacy"
             variant="secondary"
             size="s"
             title="Fit to Screen (Ctrl+0)"
@@ -31,7 +59,7 @@
         <nav id="main-tabs" class="tab-icon-bar" role="tablist" aria-label="Main sections">
 
           <div role="button" tabindex="0" class="tab-icon-btn active" data-tab-button="artboard"
-            title="Artboard" aria-label="Artboard">
+            title="Artboard" aria-label="Artboard" aria-selected="true">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2"/>
               <line x1="3" y1="9" x2="21" y2="9"/>
@@ -41,8 +69,8 @@
 
           <div class="tab-icon-divider"></div>
 
-          <div role="button" tabindex="0" class="tab-icon-btn" data-tab-button="slide"
-            title="Slide" aria-label="Slide">
+          <div role="button" tabindex="-1" class="tab-icon-btn" data-tab-button="slide"
+            title="Slide" aria-label="Slide" aria-selected="false">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="6" width="20" height="14" rx="2"/>
               <path d="M6 6V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/>
@@ -53,8 +81,8 @@
 
           <div class="tab-icon-divider"></div>
 
-          <div role="button" tabindex="0" class="tab-icon-btn" data-tab-button="layers"
-            title="Layers" aria-label="Layers">
+          <div role="button" tabindex="-1" class="tab-icon-btn" data-tab-button="layers"
+            title="Layers" aria-label="Layers" aria-selected="false">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
               <polyline points="2 12 12 17 22 12"/>
@@ -64,21 +92,17 @@
 
           <div class="tab-icon-divider"></div>
 
-          <div role="button" tabindex="0" class="tab-icon-btn" data-tab-button="colors"
-            title="Colors" aria-label="Colors">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 2a10 10 0 0 1 0 20"/>
-              <path d="M2 12h20"/>
-              <path d="M12 2C6.477 2 2 6.477 2 12"/>
-              <path d="M12 2c5.523 0 10 4.477 10 10"/>
+          <div role="button" tabindex="-1" class="tab-icon-btn" data-tab-button="colors"
+            title="Colors" aria-label="Colors" aria-selected="false">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.21-.64-1.67-.08-.09-.13-.21-.13-.33 0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9zm-5.5 11c-.83 0-1.5-.67-1.5-1.5S5.67 10 6.5 10 8 10.67 8 11.5 7.33 13 6.5 13zm3-4C8.67 9 8 8.33 8 7.5S8.67 6 9.5 6s1.5.67 1.5 1.5S10.33 9 9.5 9zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 6 14.5 6s1.5.67 1.5 1.5S15.33 9 14.5 9zm4.5 4c-.83 0-1.5-.67-1.5-1.5S18.17 10 19 10s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
             </svg>
           </div>
 
           <div class="tab-icon-divider"></div>
 
-          <div role="button" tabindex="0" class="tab-icon-btn" data-tab-button="tools"
-            title="Tools" aria-label="Tools">
+          <div role="button" tabindex="-1" class="tab-icon-btn" data-tab-button="tools"
+            title="Tools" aria-label="Tools" aria-selected="false">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
             </svg>
@@ -567,25 +591,37 @@
           <sp-button id="btn-scan-colors" variant="secondary" size="m" class="full-width">
             Scan All Colors
           </sp-button>
-          <p class="hint-text">Finds every solid color across text, shapes and fill layers in the active document.</p>
+          <p class="hint-text">Finds editable solid colors across text, shapes and fill layers in the active document.</p>
+          <p id="color-scan-note" class="hint-text color-scan-note hidden"></p>
         </section>
 
         <section class="card" id="color-swatches-card">
           <div class="section-header">
             <span class="section-kicker">Found</span>
-            <span class="section-title">Color List</span>
+            <div class="section-header-row">
+              <span class="section-title">Color List</span>
+              <button id="btn-refresh-colors" type="button" class="clear-btn color-refresh-btn">Refresh</button>
+            </div>
           </div>
           <div id="color-swatch-list" class="color-swatch-list">
             <span class="no-layers-msg">Tap "Scan All Colors" to begin.</span>
           </div>
         </section>
 
-        <section class="card" id="color-editor-card" class="hidden" style="display:none;">
+        <section class="card" id="color-editor-card">
           <div class="section-header">
             <span class="section-kicker">Pick</span>
-            <span class="section-title">New Color</span>
+            <span class="section-title">Replace Color</span>
           </div>
-          <div id="color-editor-layer-pills"></div>
+          <div class="color-source-row">
+            <div id="color-source-preview" class="color-source-preview" title="Source color"></div>
+            <div class="color-source-input-wrap">
+              <span class="field-label">Source Color</span>
+              <sp-textfield id="source-color-hex-input" value="" placeholder="#ff0000" size="s" class="full-width"></sp-textfield>
+            </div>
+          </div>
+          <p class="hint-text">Select a color from the list or type a source color already used in the document.</p>
+          <div id="color-editor-layer-pills" class="color-layer-pills color-layer-pills-editor"></div>
 
           <div class="color-wheel-wrap">
             <canvas id="color-wheel-canvas" width="180" height="180"></canvas>
@@ -616,7 +652,7 @@
               <div id="color-preview-to" class="color-preview-half" title="New"></div>
             </div>
             <div class="color-hex-wrap">
-              <span class="field-label">Hex</span>
+              <span class="field-label">New Hex</span>
               <sp-textfield id="color-hex-input" value="#ff0000" size="s" class="full-width"></sp-textfield>
             </div>
           </div>

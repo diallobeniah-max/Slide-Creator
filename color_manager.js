@@ -1,247 +1,431 @@
-// ═══════════════════════════════════════════════════════════════════════════
-//  COLOR MANAGER  v2  —  batch scan · character-level text · layer mapping
-// ═══════════════════════════════════════════════════════════════════════════
+// Color Manager
+// Optimized scan, mixed-text support, larger labels, no hex in the list.
 
 let colorManagerState = {
-  // Each entry: { hex, r, g, b, layers: [{ id, name, kind, rangeIndex? }], count }
   foundColors: [],
   selectedHex: null,
-  newH: 0, newS: 100, newB: 100,
+  newH: 0,
+  newS: 100,
+  newB: 100,
+  smartObjectCount: 0,
+  wheelFrame: null,
+  wheelDragging: false,
+  wheelImageKey: null,
+  wheelForceRedraw: true,
 };
 
-// ─── Math helpers ───────────────────────────────────────────────────────────
+let colorBucketMap = new Map();
+let _colorMap = {};
+
+function normalizeHex(hex) {
+  if (!hex) return null;
+  let clean = String(hex).trim().replace(/^#/, "");
+  if (!clean) return null;
+  if (clean.length === 3) clean = clean.split("").map((char) => char + char).join("");
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return null;
+  return "#" + clean.toLowerCase();
+}
 
 function rgbToHex(r, g, b) {
-  return "#" + [r, g, b].map(v => {
-    const h = Math.round(Math.max(0, Math.min(255, v))).toString(16);
-    return h.length === 1 ? "0" + h : h;
-  }).join("");
+  return normalizeHex(
+    [r, g, b]
+      .map((value) => {
+        const hex = Math.round(Math.max(0, Math.min(255, value))).toString(16);
+        return hex.length === 1 ? "0" + hex : hex;
+      })
+      .join("")
+  );
 }
 
 function hexToRgb(hex) {
-  let clean = hex.replace("#", "");
-  if (clean.length === 3) clean = clean.split("").map(c => c + c).join("");
-  const n = parseInt(clean, 16);
-  if (isNaN(n)) return { r: 0, g: 0, b: 0 };
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  const normalized = normalizeHex(hex);
+  if (!normalized) return { r: 0, g: 0, b: 0 };
+  const value = parseInt(normalized.slice(1), 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  };
 }
 
 function rgbToHsb(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-  let h = 0;
-  if (d !== 0) {
+  const red = r / 255;
+  const green = g / 255;
+  const blue = b / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  let hue = 0;
+
+  if (delta !== 0) {
     switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
+      case red:
+        hue = ((green - blue) / delta + (green < blue ? 6 : 0)) / 6;
+        break;
+      case green:
+        hue = ((blue - red) / delta + 2) / 6;
+        break;
+      default:
+        hue = ((red - green) / delta + 4) / 6;
+        break;
     }
   }
-  return { h: h * 360, s: max === 0 ? 0 : (d / max) * 100, b: max * 100 };
+
+  return {
+    h: hue * 360,
+    s: max === 0 ? 0 : (delta / max) * 100,
+    b: max * 100,
+  };
 }
 
 function hsbToRgb(h, s, b) {
-  h /= 360; s /= 100; b /= 100;
-  let r = 0, g = 0, bl = 0;
-  const i = Math.floor(h * 6), f = h * 6 - i;
-  const p = b * (1 - s), q = b * (1 - f * s), t = b * (1 - (1 - f) * s);
+  const hue = ((Number(h) % 360) + 360) % 360 / 360;
+  const sat = Math.max(0, Math.min(100, Number(s))) / 100;
+  const bri = Math.max(0, Math.min(100, Number(b))) / 100;
+
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  const i = Math.floor(hue * 6);
+  const f = hue * 6 - i;
+  const p = bri * (1 - sat);
+  const q = bri * (1 - f * sat);
+  const t = bri * (1 - (1 - f) * sat);
+
   switch (i % 6) {
-    case 0: r=b;  g=t;  bl=p; break; case 1: r=q;  g=b;  bl=p; break;
-    case 2: r=p;  g=b;  bl=t; break; case 3: r=p;  g=q;  bl=b; break;
-    case 4: r=t;  g=p;  bl=b; break; case 5: r=b;  g=p;  bl=q; break;
+    case 0:
+      red = bri; green = t; blue = p;
+      break;
+    case 1:
+      red = q; green = bri; blue = p;
+      break;
+    case 2:
+      red = p; green = bri; blue = t;
+      break;
+    case 3:
+      red = p; green = q; blue = bri;
+      break;
+    case 4:
+      red = t; green = p; blue = bri;
+      break;
+    default:
+      red = bri; green = p; blue = q;
+      break;
   }
-  return { r: Math.round(r*255), g: Math.round(g*255), b: Math.round(bl*255) };
+
+  return {
+    r: Math.round(red * 255),
+    g: Math.round(green * 255),
+    b: Math.round(blue * 255),
+  };
 }
 
-function colorsNear(hex1, hex2, tol) {
-  tol = (tol === undefined) ? 4 : tol;
-  const a = hexToRgb(hex1), b = hexToRgb(hex2);
-  return Math.abs(a.r - b.r) <= tol && Math.abs(a.g - b.g) <= tol && Math.abs(a.b - b.b) <= tol;
+function getColorChannels(color) {
+  if (!color) return null;
+  const red = Number(color.red && color.red._value !== undefined ? color.red._value : color.red);
+  const green = Number(color.green && color.green._value !== undefined ? color.green._value : color.green);
+  const blue = Number(color.blue && color.blue._value !== undefined ? color.blue._value : color.blue);
+  if (![red, green, blue].every(Number.isFinite)) return null;
+  return {
+    red: Math.round(red),
+    green: Math.round(green),
+    blue: Math.round(blue),
+  };
 }
 
-// ─── Color Map registry ─────────────────────────────────────────────────────
-// colorMap: hex → { r, g, b, layers: Set<string JSON> }
-// We defer serialization to the end so we never iterate the map mid-mutation.
+function colorToHex(color) {
+  const channels = getColorChannels(color);
+  if (!channels) return null;
+  return rgbToHex(channels.red, channels.green, channels.blue);
+}
 
-let _colorMap = {};
+function colorsNear(hex1, hex2, tolerance) {
+  const tol = tolerance === undefined ? 4 : tolerance;
+  const left = hexToRgb(hex1);
+  const right = hexToRgb(hex2);
+  return (
+    Math.abs(left.r - right.r) <= tol &&
+    Math.abs(left.g - right.g) <= tol &&
+    Math.abs(left.b - right.b) <= tol
+  );
+}
 
-function _record(r, g, b, layerEntry) {
-  const hex = rgbToHex(r, g, b);
-  // Find an existing near-match to merge perceptually similar colors
-  const key = Object.keys(_colorMap).find(k => colorsNear(k, hex)) || hex;
-  if (!_colorMap[key]) _colorMap[key] = { r, g, b, layers: [] };
-  // Store a compact entry; use JSON stringify for cheap dedup
-  const sig = layerEntry.id + "|" + (layerEntry.rangeIndex !== undefined ? layerEntry.rangeIndex : "");
+function setScanNote(message) {
+  const note = document.getElementById("color-scan-note");
+  if (!note) return;
+  const hasMessage = !!message;
+  note.textContent = hasMessage ? message : "";
+  note.classList.toggle("hidden", !hasMessage);
+}
+
+function setSourcePreview(hex) {
+  const preview = document.getElementById("color-source-preview");
+  const fromBox = document.getElementById("color-preview-from");
+  const previewColor = normalizeHex(hex) || "rgba(255,255,255,0.06)";
+
+  if (preview) preview.style.background = previewColor;
+  if (fromBox) fromBox.style.background = previewColor;
+}
+
+function setTargetPreview(hex) {
+  const toBox = document.getElementById("color-preview-to");
+  if (toBox) toBox.style.background = normalizeHex(hex) || "transparent";
+}
+
+function updateSliderValues() {
+  const values = {
+    h: Math.round(colorManagerState.newH),
+    s: Math.round(colorManagerState.newS),
+    b: Math.round(colorManagerState.newB),
+  };
+
+  ["h", "s", "b"].forEach((key) => {
+    const slider = document.getElementById("slider-" + key);
+    const label = document.getElementById("val-" + key);
+    if (slider) slider.value = values[key];
+    if (label) label.textContent = String(values[key]);
+  });
+}
+
+function recordColor(color, layerEntry) {
+  const hex = colorToHex(color);
+  if (!hex) return;
+
+  if (!colorBucketMap.has(hex)) {
+    colorBucketMap.set(hex, { hex, layers: [], seen: new Set() });
+  }
+
+  const bucket = colorBucketMap.get(hex);
+  const signature = [
+    layerEntry.id,
+    layerEntry.kind || "",
+    layerEntry.path || "",
+    layerEntry.rangeIndex !== undefined ? layerEntry.rangeIndex : "",
+  ].join("|");
+
+  if (bucket.seen.has(signature)) return;
+  bucket.seen.add(signature);
+  bucket.layers.push({ ...layerEntry, sourceHex: hex });
+}
+
+function recordRawColor(red, green, blue, layerEntry) {
+  const hex = rgbToHex(red, green, blue);
+  const key = Object.keys(_colorMap).find((existing) => colorsNear(existing, hex)) || hex;
+  if (!_colorMap[key]) _colorMap[key] = { r: red, g: green, b: blue, layers: [] };
+  const signature = layerEntry.id + "|" + (layerEntry.rangeIndex !== undefined ? layerEntry.rangeIndex : "");
   if (!_colorMap[key]._sigs) _colorMap[key]._sigs = new Set();
-  if (!_colorMap[key]._sigs.has(sig)) {
-    _colorMap[key]._sigs.add(sig);
-    _colorMap[key].layers.push(layerEntry);
-  }
+  if (_colorMap[key]._sigs.has(signature)) return;
+  _colorMap[key]._sigs.add(signature);
+  _colorMap[key].layers.push(layerEntry);
 }
 
-// ─── SCAN ───────────────────────────────────────────────────────────────────
-// Strategy: collect all leaf-layer IDs in one fast DOM walk (no batchPlay),
-// then fire ONE batched batchPlay call for all IDs at once.
-
-async function scanAllColors() {
-  const doc = app.activeDocument;
-  if (!doc) { showError("Scan failed", new Error("No active document.")); return; }
-  setStatus("Scanning…", "working");
-
-  // 1. Fast DOM walk — zero batchPlay calls, just collect IDs + names
-  const leafLayers = [];
-  function collectLeaves(layers) {
-    for (const layer of Array.from(layers || [])) {
-      if (layer.isBackgroundLayer) continue;
-      if (layer.layers && layer.layers.length > 0) {
-        collectLeaves(layer.layers); // recurse into group
-      } else {
-        leafLayers.push({ id: layer.id, name: layer.name || "Layer" });
-      }
+function collectLeafLayers(layers, result) {
+  for (const layer of Array.from(layers || [])) {
+    if (layer.isBackgroundLayer) continue;
+    if (layer.layers && layer.layers.length > 0) {
+      collectLeafLayers(layer.layers, result);
+      continue;
     }
-  }
-  collectLeaves(doc.layers);
 
-  if (leafLayers.length === 0) {
-    setStatus("No layers found.", "error"); return;
-  }
+    const layerKind = String(layer.kind || "").toLowerCase();
 
-  // 2. Batch-fetch all layer descriptors in ONE batchPlay call
-  _colorMap = {};
-  try {
-    await core.executeAsModal(async () => {
-      // Build one multi-get batchPlay array (much faster than one-per-layer)
-      const CHUNK = 30; // UXP limits very large batches; 30 is safe
-      for (let i = 0; i < leafLayers.length; i += CHUNK) {
-        const chunk = leafLayers.slice(i, i + CHUNK);
-        const ops = chunk.map(l => ({
-          _obj: "get",
-          _target: [{ _ref: "layer", _id: l.id }, { _ref: "document", _enum: "ordinal", _value: "targetEnum" }],
-          _options: { dialogOptions: "dontDisplay" }
-        }));
-        let results;
-        try { results = await action.batchPlay(ops, { synchronousExecution: true }); }
-        catch(_) { results = []; }
-
-        for (let j = 0; j < chunk.length; j++) {
-          const lr = results[j];
-          if (!lr) continue;
-          const { id, name } = chunk[j];
-
-          // ── Character-level text color extraction ──
-          // textStyleRange gives per-range colors (mixed-color text is fully supported)
-          if (lr.textKey && lr.textKey.textStyleRange) {
-            const ranges = lr.textKey.textStyleRange;
-            for (let ri = 0; ri < ranges.length; ri++) {
-              const ts = ranges[ri].textStyle;
-              if (!ts || !ts.color) continue;
-              const c = ts.color;
-              const rr = Math.round(c.red   || 0);
-              const rg = Math.round(c.green  || 0);
-              const rb = Math.round(c.blue   || 0);
-              _record(rr, rg, rb, { id, name, kind: "text", rangeIndex: ri });
-            }
-            continue; // text layer — no fill to check
-          }
-
-          // ── Solid color fill layer ──
-          if (lr.adjustment && lr.adjustment[0] && lr.adjustment[0]._obj === "solidColorLayer") {
-            const c = lr.adjustment[0].color;
-            if (c) _record(Math.round(c.red||0), Math.round(c.green||0), Math.round(c.blue||0), { id, name, kind: "fill" });
-            continue;
-          }
-
-          // ── Shape / vector fill ──
-          if (lr.fillContents && lr.fillContents.color) {
-            const c = lr.fillContents.color;
-            _record(Math.round(c.red||0), Math.round(c.green||0), Math.round(c.blue||0), { id, name, kind: "shape" });
-            continue;
-          }
-
-          // ── Layer effects solid fill ──
-          if (lr.layerEffects && lr.layerEffects.solidFill) {
-            const sf = lr.layerEffects.solidFill;
-            const c = sf.color || (Array.isArray(sf) && sf[0] && sf[0].color);
-            if (c) _record(Math.round(c.red||0), Math.round(c.green||0), Math.round(c.blue||0), { id, name, kind: "effect" });
-          }
-        }
-      }
-    }, { commandName: "Scan Colors" });
-
-    // 3. Materialise state — done outside modal so no re-render inside modal
-    colorManagerState.foundColors = Object.entries(_colorMap).map(([hex, v]) => ({
-      hex, r: v.r, g: v.g, b: v.b,
-      layers: v.layers,
-      count: v.layers.length
-    })).sort((a, b) => b.count - a.count);
-
-    renderColorSwatches();
-    setStatus("Found " + colorManagerState.foundColors.length + " color(s) across " + leafLayers.length + " layer(s)", "success");
-  } catch(e) {
-    showError("Scan failed", e);
+    result.push({
+      id: layer.id,
+      name: layer.name || "Layer",
+      layerKind,
+    });
   }
 }
 
-// ─── SWATCH RENDER ──────────────────────────────────────────────────────────
-// Single DOM write using a DocumentFragment — zero reflows during build.
+async function fetchLayerDescriptors(layerEntries) {
+  const descriptorsById = new Map();
+  const chunkSize = 30;
+
+  for (let index = 0; index < layerEntries.length; index += chunkSize) {
+    const chunk = layerEntries.slice(index, index + chunkSize);
+    const commands = chunk.map((entry) => ({
+      _obj: "get",
+      _target: [
+        { _ref: "layer", _id: entry.id },
+        { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
+      ],
+      _options: { dialogOptions: "dontDisplay" },
+    }));
+
+    let results = [];
+    try {
+      results = await action.batchPlay(commands, {
+        continueOnError: true,
+        synchronousExecution: true,
+      });
+    } catch (_) {
+      results = [];
+    }
+
+    results.forEach((descriptor, resultIndex) => {
+      if (!descriptor || descriptor._obj === "error") return;
+      descriptorsById.set(chunk[resultIndex].id, descriptor);
+    });
+  }
+
+  return descriptorsById;
+}
+
+function getTextStyleRanges(descriptor) {
+  const textKey = descriptor && descriptor.textKey;
+  const textKeyRanges = Array.isArray(textKey && textKey.textStyleRange) ? textKey.textStyleRange : [];
+  if (textKeyRanges.length > 0) {
+    return { textKey, ranges: textKeyRanges, path: "textKey.textStyleRange" };
+  }
+
+  const rootRanges = Array.isArray(descriptor && descriptor.textStyleRange) ? descriptor.textStyleRange : [];
+  if (rootRanges.length > 0) {
+    return { textKey, ranges: rootRanges, path: "textStyleRange" };
+  }
+
+  return { textKey, ranges: [], path: "textKey.textStyleRange" };
+}
+
+function extractTextColors(layerEntry, descriptor) {
+  const { textKey, ranges, path } = getTextStyleRanges(descriptor);
+  const fallbackStyle =
+    (textKey && textKey.textStyle) ||
+    (descriptor && descriptor.textStyle) ||
+    null;
+
+  if (ranges.length === 0 && fallbackStyle && fallbackStyle.color) {
+    recordColor(fallbackStyle.color, {
+      id: layerEntry.id,
+      name: layerEntry.name,
+      kind: "text",
+      path: "textKey.textStyle.color",
+      rangeIndex: 0,
+    });
+    return;
+  }
+
+  ranges.forEach((range, rangeIndex) => {
+    if (!range || !range.textStyle || !range.textStyle.color) return;
+    recordColor(range.textStyle.color, {
+      id: layerEntry.id,
+      name: layerEntry.name,
+      kind: "text",
+      path,
+      rangeIndex,
+      from: range.from,
+      to: range.to,
+    });
+  });
+}
+
+function extractSolidColorLayer(layerEntry, descriptor) {
+  const adjustments = Array.isArray(descriptor && descriptor.adjustment) ? descriptor.adjustment : [];
+  adjustments.forEach((adjustment, adjustmentIndex) => {
+    if (!adjustment || adjustment._obj !== "solidColorLayer" || !adjustment.color) return;
+    recordColor(adjustment.color, {
+      id: layerEntry.id,
+      name: layerEntry.name,
+      kind: "fill",
+      path: "adjustment." + adjustmentIndex + ".color",
+    });
+  });
+}
+
+function extractShapeFill(layerEntry, descriptor) {
+  if (!descriptor || !descriptor.fillContents || !descriptor.fillContents.color) return;
+  recordColor(descriptor.fillContents.color, {
+    id: layerEntry.id,
+    name: layerEntry.name,
+    kind: "shape",
+    path: "fillContents.color",
+  });
+}
+
+function extractLayerEffects(layerEntry, descriptor) {
+  const solidFill = descriptor && descriptor.layerEffects && descriptor.layerEffects.solidFill;
+  if (!solidFill) return;
+
+  const color = Array.isArray(solidFill) ? solidFill[0] && solidFill[0].color : solidFill.color;
+  if (!color) return;
+
+  recordColor(color, {
+    id: layerEntry.id,
+    name: layerEntry.name,
+    kind: "effect",
+    path: "layerEffects.solidFill.color",
+  });
+}
+
+function buildFoundColors() {
+  return Array.from(colorBucketMap.values())
+    .map((bucket) => ({
+      hex: bucket.hex,
+      layers: bucket.layers,
+      count: bucket.layers.length,
+    }))
+    .sort((left, right) => right.count - left.count || left.hex.localeCompare(right.hex));
+}
+
+function collectColorDataFromDescriptor(layerEntry, descriptor) {
+  if (!descriptor || descriptor._obj === "error") return;
+  extractTextColors(layerEntry, descriptor);
+  extractSolidColorLayer(layerEntry, descriptor);
+  extractShapeFill(layerEntry, descriptor);
+  extractLayerEffects(layerEntry, descriptor);
+}
 
 function renderColorSwatches() {
   const list = document.getElementById("color-swatch-list");
   if (!list) return;
 
   if (colorManagerState.foundColors.length === 0) {
-    list.innerHTML = '<span class="no-layers-msg">No solid colors found in this document.</span>';
+    list.innerHTML = '<span class="no-layers-msg">No editable solid colors found.</span>';
     return;
   }
 
-  const frag = document.createDocumentFragment();
+  const fragment = document.createDocumentFragment();
 
-  for (const entry of colorManagerState.foundColors) {
+  colorManagerState.foundColors.forEach((entry) => {
     const row = document.createElement("div");
     row.className = "color-swatch-row" + (colorManagerState.selectedHex === entry.hex ? " selected" : "");
     row.dataset.hex = entry.hex;
 
-    // Dot
     const dot = document.createElement("div");
     dot.className = "color-swatch-dot";
     dot.style.background = entry.hex;
 
-    // Info column
     const info = document.createElement("div");
     info.className = "color-swatch-info";
 
-    const hexSpan = document.createElement("span");
-    hexSpan.className = "color-swatch-hex";
-    hexSpan.textContent = entry.hex.toUpperCase();
-
-    // Layer name pills — compact, max 3 shown
     const pillsWrap = document.createElement("div");
-    pillsWrap.className = "color-layer-pills";
-    const uniqueNames = [...new Set(entry.layers.map(l => l.name))];
-    const shown = uniqueNames.slice(0, 3);
-    const extra = uniqueNames.length - shown.length;
-    for (const n of shown) {
+    pillsWrap.className = "color-layer-pills color-layer-pills-list";
+
+    const uniqueLayerNames = [...new Set(entry.layers.map((layer) => layer.name))];
+    const shownNames = uniqueLayerNames.slice(0, 2);
+    const remainingCount = uniqueLayerNames.length - shownNames.length;
+
+    shownNames.forEach((layerName) => {
       const pill = document.createElement("span");
       pill.className = "color-layer-pill";
-      pill.textContent = n;
+      pill.textContent = layerName;
       pillsWrap.appendChild(pill);
-    }
-    if (extra > 0) {
-      const more = document.createElement("span");
-      more.className = "color-layer-pill color-layer-pill-more";
-      more.textContent = "+" + extra + " more";
-      pillsWrap.appendChild(more);
+    });
+
+    if (remainingCount > 0) {
+      const extra = document.createElement("span");
+      extra.className = "color-layer-pill color-layer-pill-more";
+      extra.textContent = "+" + remainingCount;
+      pillsWrap.appendChild(extra);
     }
 
-    const countSpan = document.createElement("span");
-    countSpan.className = "color-swatch-count";
-    countSpan.textContent = entry.count + " instance" + (entry.count !== 1 ? "s" : "");
+    const count = document.createElement("span");
+    count.className = "color-swatch-count";
+    count.textContent = entry.count + " match" + (entry.count === 1 ? "" : "es");
 
-    info.appendChild(hexSpan);
     info.appendChild(pillsWrap);
-    info.appendChild(countSpan);
+    info.appendChild(count);
 
-    // Checkmark
     const icon = document.createElement("span");
     icon.className = "color-swatch-select-icon";
     icon.textContent = "✓";
@@ -249,304 +433,747 @@ function renderColorSwatches() {
     row.appendChild(dot);
     row.appendChild(info);
     row.appendChild(icon);
-
     row.addEventListener("click", () => selectSwatchColor(entry.hex));
-    frag.appendChild(row);
-  }
 
-  // ONE DOM write
+    fragment.appendChild(row);
+  });
+
   list.innerHTML = "";
-  list.appendChild(frag);
+  list.appendChild(fragment);
 }
 
-function selectSwatchColor(hex) {
-  colorManagerState.selectedHex = hex;
-
-  // Batch classList toggles without forcing separate reflows
-  const rows = document.querySelectorAll(".color-swatch-row");
-  for (const r of rows) r.classList.toggle("selected", r.dataset.hex === hex);
-
-  const fromBox = document.getElementById("color-preview-from");
-  if (fromBox) fromBox.style.background = hex;
-
-  const rgb = hexToRgb(hex);
-  const hsb = rgbToHsb(rgb.r, rgb.g, rgb.b);
-  colorManagerState.newH = hsb.h;
-  colorManagerState.newS = hsb.s;
-  colorManagerState.newB = hsb.b;
-
-  syncPickerFromHSB();
-
-  const card = document.getElementById("color-editor-card");
-  if (card) card.style.display = "";
-
-  // Show which layers will be affected in the editor card header
-  const entry = colorManagerState.foundColors.find(e => e.hex === hex);
-  updateEditorLayerPills(entry ? entry.layers : []);
+function refreshSwatchSelection() {
+  document.querySelectorAll(".color-swatch-row").forEach((row) => {
+    row.classList.toggle("selected", row.dataset.hex === colorManagerState.selectedHex);
+  });
 }
 
 function updateEditorLayerPills(layerEntries) {
-  let container = document.getElementById("color-editor-layer-pills");
+  const container = document.getElementById("color-editor-layer-pills");
   if (!container) return;
-  const frag = document.createDocumentFragment();
-  const names = [...new Set(layerEntries.map(l => l.name))];
-  names.forEach(n => {
-    const p = document.createElement("span");
-    p.className = "color-layer-pill";
-    p.textContent = n;
-    frag.appendChild(p);
-  });
+
   container.innerHTML = "";
-  container.appendChild(frag);
+
+  const uniqueNames = [...new Set((layerEntries || []).map((entry) => entry.name))];
+  if (uniqueNames.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "hint-text";
+    empty.textContent = "No scanned layer names mapped to this source color yet.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  uniqueNames.forEach((layerName) => {
+    const pill = document.createElement("span");
+    pill.className = "color-layer-pill";
+    pill.textContent = layerName;
+    fragment.appendChild(pill);
+  });
+
+  container.appendChild(fragment);
 }
 
-// ─── COLOR WHEEL ────────────────────────────────────────────────────────────
-// Drawn using ImageData — one putImageData call, no per-pixel fillRect.
+function setSelectedSource(hex, options = {}) {
+  const normalized = normalizeHex(hex);
+  colorManagerState.selectedHex = normalized;
 
-function drawColorWheel() {
+  const sourceInput = document.getElementById("source-color-hex-input");
+  if (sourceInput && options.syncInput !== false) {
+    sourceInput.value = normalized || "";
+    if (normalized) sourceInput.setAttribute("value", normalized);
+  }
+
+  setSourcePreview(normalized);
+  refreshSwatchSelection();
+
+  const foundEntry = colorManagerState.foundColors.find((entry) => entry.hex === normalized);
+  updateEditorLayerPills(foundEntry ? foundEntry.layers : []);
+
+  if (!options.keepTarget && normalized) {
+    const rgb = hexToRgb(normalized);
+    const hsb = rgbToHsb(rgb.r, rgb.g, rgb.b);
+    colorManagerState.newH = hsb.h;
+    colorManagerState.newS = hsb.s;
+    colorManagerState.newB = hsb.b;
+    syncPickerFromHSB(true);
+  }
+}
+
+function selectSwatchColor(hex) {
+  setSelectedSource(hex);
+}
+
+function syncPickerFromHSB(forceWheelRedraw) {
+  updateSliderValues();
+
+  const rgb = hsbToRgb(colorManagerState.newH, colorManagerState.newS, colorManagerState.newB);
+  const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+  const hexInput = document.getElementById("color-hex-input");
+  if (hexInput) {
+    hexInput.value = hex;
+    hexInput.setAttribute("value", hex);
+  }
+
+  setTargetPreview(hex);
+  scheduleWheelDraw(!!forceWheelRedraw);
+}
+
+function drawColorWheel(force) {
   const canvas = document.getElementById("color-wheel-canvas");
   if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const W = canvas.width, H = canvas.height;
-  const cx = W / 2, cy = H / 2, radius = W / 2;
-  const bri = colorManagerState.newB;
 
-  const img = ctx.createImageData(W, H);
-  const data = img.data;
+  const brightnessKey = Math.round(colorManagerState.newB);
+  if (!force && colorManagerState.wheelImageKey === brightnessKey) return;
 
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const dx = x - cx, dy = y - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const idx = (y * W + x) * 4;
-      if (dist > radius) {
-        data[idx + 3] = 0; // transparent outside circle
-        continue;
-      }
-      const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
-      const sat = (dist / radius) * 100;
-      const rgb = hsbToRgb(angle, sat, bri);
-      data[idx]     = rgb.r;
-      data[idx + 1] = rgb.g;
-      data[idx + 2] = rgb.b;
-      data[idx + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0); // single GPU upload
+  const brightness = Math.max(0.08, Math.min(1, colorManagerState.newB / 100));
+  canvas.style.setProperty("--wheel-brightness", String(brightness));
+  colorManagerState.wheelImageKey = brightnessKey;
 }
 
 function updateWheelCursor() {
   const canvas = document.getElementById("color-wheel-canvas");
   const cursor = document.getElementById("color-wheel-cursor");
   if (!canvas || !cursor) return;
-  const W = canvas.width, H = canvas.height;
-  const cx = W / 2, cy = H / 2, radius = W / 2;
-  const angle = colorManagerState.newH * Math.PI / 180;
-  const dist = (colorManagerState.newS / 100) * radius;
-  const px = cx + Math.cos(angle) * dist;
-  const py = cy + Math.sin(angle) * dist;
+
   const rect = canvas.getBoundingClientRect();
-  const scaleX = rect.width / W, scaleY = rect.height / H;
-  // Batch style writes
+  if (!rect.width || !rect.height) return;
+
+  const width = canvas.width;
+  const centerX = width / 2;
+  const centerY = width / 2;
+  const radius = width / 2;
+  const angle = (colorManagerState.newH * Math.PI) / 180;
+  const distance = (colorManagerState.newS / 100) * radius;
+  const pointX = centerX + Math.cos(angle) * distance;
+  const pointY = centerY + Math.sin(angle) * distance;
+  const scaleX = rect.width / width;
+  const scaleY = rect.height / canvas.height;
   const rgb = hsbToRgb(colorManagerState.newH, colorManagerState.newS, colorManagerState.newB);
-  cursor.style.cssText = "left:" + (px * scaleX) + "px;top:" + (py * scaleY) + "px;background:rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ");";
+
+  cursor.style.left = pointX * scaleX + "px";
+  cursor.style.top = pointY * scaleY + "px";
+  cursor.style.background = "rgb(" + rgb.r + ", " + rgb.g + ", " + rgb.b + ")";
+  cursor.style.display = "block";
 }
 
-// Debounce wheel re-draw so rapid dragging doesn't spam pixel loops
-let _wheelRafId = null;
-function scheduleWheelDraw() {
-  if (_wheelRafId) return;
-  _wheelRafId = requestAnimationFrame(() => {
-    _wheelRafId = null;
-    drawColorWheel();
+function scheduleWheelDraw(forceImage) {
+  if (forceImage) colorManagerState.wheelForceRedraw = true;
+  if (colorManagerState.wheelFrame) return;
+
+  colorManagerState.wheelFrame = requestAnimationFrame(() => {
+    colorManagerState.wheelFrame = null;
+    drawColorWheel(true);
+    colorManagerState.wheelForceRedraw = false;
     updateWheelCursor();
   });
 }
 
-function syncPickerFromHSB() {
-  const { newH: h, newS: s, newB: b } = colorManagerState;
-  const slH = document.getElementById("slider-h");
-  const slS = document.getElementById("slider-s");
-  const slB = document.getElementById("slider-b");
-  const vH  = document.getElementById("val-h");
-  const vS  = document.getElementById("val-s");
-  const vB  = document.getElementById("val-b");
-  if (slH) { slH.value = h; if (vH) vH.textContent = Math.round(h); }
-  if (slS) { slS.value = s; if (vS) vS.textContent = Math.round(s); }
-  if (slB) { slB.value = b; if (vB) vB.textContent = Math.round(b); }
-
-  const rgb = hsbToRgb(h, s, b);
-  const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
-  const hexInput = document.getElementById("color-hex-input");
-  if (hexInput) { hexInput.value = hex; hexInput.setAttribute("value", hex); }
-  const toBox = document.getElementById("color-preview-to");
-  if (toBox) toBox.style.background = hex;
-
-  scheduleWheelDraw();
-}
-
-function pickFromWheel(e) {
+function pickFromWheel(event) {
   const canvas = document.getElementById("color-wheel-canvas");
   if (!canvas) return;
+
   const rect = canvas.getBoundingClientRect();
-  const dx = e.clientX - rect.left - rect.width / 2;
-  const dy = e.clientY - rect.top  - rect.height / 2;
+  if (!rect.width || !rect.height) return;
+
+  const dx = event.clientX - rect.left - rect.width / 2;
+  const dy = event.clientY - rect.top - rect.height / 2;
   const radius = rect.width / 2;
-  const dist = Math.min(Math.sqrt(dx * dx + dy * dy), radius);
-  colorManagerState.newH = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
-  colorManagerState.newS = (dist / radius) * 100;
-  syncPickerFromHSB();
+  const distance = Math.min(Math.sqrt(dx * dx + dy * dy), radius);
+
+  colorManagerState.newH = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+  colorManagerState.newS = (distance / radius) * 100;
+  syncPickerFromHSB(false);
+}
+
+function applyTargetHexInput() {
+  const hexInput = document.getElementById("color-hex-input");
+  if (!hexInput) return;
+
+  const normalized = normalizeHex(hexInput.value);
+  if (!normalized) return;
+
+  const rgb = hexToRgb(normalized);
+  const hsb = rgbToHsb(rgb.r, rgb.g, rgb.b);
+  colorManagerState.newH = hsb.h;
+  colorManagerState.newS = hsb.s;
+  colorManagerState.newB = hsb.b;
+  syncPickerFromHSB(true);
+}
+
+function applySourceHexInput() {
+  const sourceInput = document.getElementById("source-color-hex-input");
+  if (!sourceInput) return;
+
+  const normalized = normalizeHex(sourceInput.value);
+  if (!normalized) return;
+
+  setSelectedSource(normalized, { syncInput: true });
 }
 
 function initColorWheel() {
   const canvas = document.getElementById("color-wheel-canvas");
-  if (!canvas) return;
+  if (!canvas || canvas.dataset.bound === "true") return;
+  canvas.dataset.bound = "true";
 
-  let dragging = false;
-  canvas.addEventListener("mousedown", e => { dragging = true; pickFromWheel(e); });
-  canvas.addEventListener("mousemove", e => { if (dragging) pickFromWheel(e); });
-  document.addEventListener("mouseup", () => { dragging = false; });
+  canvas.addEventListener("pointerdown", (event) => {
+    colorManagerState.wheelDragging = true;
+    if (canvas.setPointerCapture) {
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch (_) {
+        // Ignore pointer-capture issues inside UXP.
+      }
+    }
+    pickFromWheel(event);
+  });
 
-  function bindSlider(id, stateKey, valId) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener("input", () => {
-      colorManagerState[stateKey] = Number(el.value);
-      const v = document.getElementById(valId);
-      if (v) v.textContent = Math.round(colorManagerState[stateKey]);
-      syncPickerFromHSB();
+  canvas.addEventListener("pointermove", (event) => {
+    if (!colorManagerState.wheelDragging) return;
+    pickFromWheel(event);
+  });
+
+  const stopDragging = () => {
+    colorManagerState.wheelDragging = false;
+  };
+
+  canvas.addEventListener("pointerup", stopDragging);
+  canvas.addEventListener("pointercancel", stopDragging);
+  document.addEventListener("pointerup", stopDragging);
+
+  ["h", "s", "b"].forEach((key) => {
+    const slider = document.getElementById("slider-" + key);
+    if (!slider) return;
+    slider.addEventListener("input", () => {
+      colorManagerState["new" + key.toUpperCase()] = Number(slider.value);
+      syncPickerFromHSB(key === "b");
+    });
+  });
+
+  const targetHexInput = document.getElementById("color-hex-input");
+  if (targetHexInput) {
+    targetHexInput.addEventListener("change", applyTargetHexInput);
+    targetHexInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") applyTargetHexInput();
     });
   }
-  bindSlider("slider-h", "newH", "val-h");
-  bindSlider("slider-s", "newS", "val-s");
-  bindSlider("slider-b", "newB", "val-b");
 
-  function applyHexInput() {
-    const hexInput = document.getElementById("color-hex-input");
-    if (!hexInput) return;
-    let val = (hexInput.value || "").trim();
-    if (!val.startsWith("#")) val = "#" + val;
-    const rgb = hexToRgb(val);
-    const hsb = rgbToHsb(rgb.r, rgb.g, rgb.b);
-    colorManagerState.newH = hsb.h;
-    colorManagerState.newS = hsb.s;
-    colorManagerState.newB = hsb.b;
-    syncPickerFromHSB();
-  }
-  const hexInput = document.getElementById("color-hex-input");
-  if (hexInput) {
-    hexInput.addEventListener("change", applyHexInput);
-    hexInput.addEventListener("blur",   applyHexInput);
+  const sourceHexInput = document.getElementById("source-color-hex-input");
+  if (sourceHexInput) {
+    sourceHexInput.addEventListener("change", applySourceHexInput);
+    sourceHexInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") applySourceHexInput();
+    });
   }
 }
 
-// ─── REPLACE ─────────────────────────────────────────────────────────────────
-// Targets only the exact layers stored in the colorMap entry.
-// All selects + sets are batched per-layer-type to minimise round-trips.
-
-async function replaceColorGlobally() {
-  const { selectedHex, newH, newS, newB } = colorManagerState;
-  if (!selectedHex) {
-    showError("Replace failed", new Error("Select a color from the list first.")); return;
-  }
+async function scanAllColors(options = {}) {
   const doc = app.activeDocument;
-  if (!doc) { showError("Replace failed", new Error("No active document.")); return; }
-
-  const entry = colorManagerState.foundColors.find(e => e.hex === selectedHex);
-  if (!entry || entry.layers.length === 0) {
-    showError("Replace failed", new Error("No layers mapped to this color.")); return;
+  if (!doc) {
+    showError("Scan failed", new Error("No active document."));
+    return;
   }
 
-  const toRgb = hsbToRgb(newH, newS, newB);
-  const toHex = rgbToHex(toRgb.r, toRgb.g, toRgb.b);
-  setStatus("Replacing " + selectedHex.toUpperCase() + " → " + toHex.toUpperCase() + " across " + entry.layers.length + " instance(s)…", "working");
+  if (!options.skipStatus) setStatus("Scanning colors...", "working");
 
-  const newColor = { _obj: "RGBColor", red: toRgb.r, green: toRgb.g, blue: toRgb.b };
+  const leafLayers = [];
+  colorManagerState.smartObjectCount = 0;
+  collectLeafLayers(doc.layers, leafLayers);
+
+  if (leafLayers.length === 0) {
+    colorManagerState.foundColors = [];
+    renderColorSwatches();
+    updateEditorLayerPills([]);
+    setScanNote("");
+    setStatus("No layers found.", "error");
+    return;
+  }
+
+  colorBucketMap = new Map();
+  _colorMap = {};
 
   try {
     await core.executeAsModal(async () => {
-      // Group by kind for efficient batching
-      const textLayers   = entry.layers.filter(l => l.kind === "text");
-      const fillLayers   = entry.layers.filter(l => l.kind === "fill");
-      const shapeLayers  = entry.layers.filter(l => l.kind === "shape");
+      const chunkSize = 30;
 
-      // ── Text layers: select each, then set all-text color in one call ──
-      for (const l of textLayers) {
-        await action.batchPlay([
-          { _obj: "select", _target: [{ _ref: "layer", _id: l.id }], makeVisible: false },
-          // Select all characters
-          { _obj: "set", _target: [{ _ref: "textLayer", _enum: "ordinal", _value: "targetEnum" }],
-            to: { _obj: "textLayer",
-                  textKey: { _obj: "textLayer",
-                    textStyleRange: [{
-                      _obj: "textStyleRange",
-                      from: 0, to: 99999,
-                      textStyle: { _obj: "textStyle", color: newColor }
-                    }]
-                  }
-                }
+      for (let index = 0; index < leafLayers.length; index += chunkSize) {
+        const chunk = leafLayers.slice(index, index + chunkSize);
+        const commands = chunk.map((entry) => ({
+          _obj: "get",
+          _target: [
+            { _ref: "layer", _id: entry.id },
+            { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
+          ],
+          _options: { dialogOptions: "dontDisplay" },
+        }));
+
+        let results = [];
+        try {
+          results = await action.batchPlay(commands, {
+            continueOnError: true,
+            synchronousExecution: true,
+          });
+        } catch (_) {
+          results = [];
+        }
+
+        results.forEach((descriptor, resultIndex) => {
+          if (!descriptor || descriptor._obj === "error") return;
+
+          const layerEntry = chunk[resultIndex];
+          if (!layerEntry) return;
+
+          if (descriptor.smartObject || descriptor.smartObjectMore || layerEntry.layerKind.includes("smart")) {
+            colorManagerState.smartObjectCount += 1;
           }
-        ], { synchronousExecution: true });
-      }
 
-      // ── Solid fill layers: batch select + set ──
-      for (const l of fillLayers) {
-        await action.batchPlay([
-          { _obj: "select", _target: [{ _ref: "layer", _id: l.id }], makeVisible: false },
-          { _obj: "set",
-            _target: [{ _ref: "contentLayer", _enum: "ordinal", _value: "targetEnum" }],
-            to: { _obj: "solidColorLayer", color: newColor }
+          const { textKey, ranges } = getTextStyleRanges(descriptor);
+          const fallbackTextStyle =
+            (textKey && textKey.textStyle) ||
+            descriptor.textStyle ||
+            null;
+
+          if (ranges.length > 0) {
+            ranges.forEach((range, rangeIndex) => {
+              const channels = getColorChannels(range && range.textStyle && range.textStyle.color);
+              if (!channels) return;
+              recordRawColor(channels.red, channels.green, channels.blue, {
+                id: layerEntry.id,
+                name: layerEntry.name,
+                kind: "text",
+                rangeIndex,
+              });
+            });
+          } else {
+            const channels = getColorChannels(fallbackTextStyle && fallbackTextStyle.color);
+            if (channels) {
+              recordRawColor(channels.red, channels.green, channels.blue, {
+                id: layerEntry.id,
+                name: layerEntry.name,
+                kind: "text",
+                rangeIndex: 0,
+              });
+            }
           }
-        ], { synchronousExecution: true });
-      }
 
-      // ── Shape layers ──
-      for (const l of shapeLayers) {
-        await action.batchPlay([
-          { _obj: "select", _target: [{ _ref: "layer", _id: l.id }], makeVisible: false },
-          { _obj: "set",
-            _target: [{ _ref: "contentLayer", _enum: "ordinal", _value: "targetEnum" }],
-            to: { _obj: "shapeStyle",
-                  fillContents: { _obj: "solidColorLayer", color: newColor }
-                }
+          const adjustments = Array.isArray(descriptor.adjustment) ? descriptor.adjustment : [];
+          adjustments.forEach((adjustment) => {
+            if (!adjustment || adjustment._obj !== "solidColorLayer") return;
+            const channels = getColorChannels(adjustment.color);
+            if (!channels) return;
+            recordRawColor(channels.red, channels.green, channels.blue, {
+              id: layerEntry.id,
+              name: layerEntry.name,
+              kind: "fill",
+            });
+          });
+
+          const fillChannels = getColorChannels(descriptor.fillContents && descriptor.fillContents.color);
+          if (fillChannels) {
+            recordRawColor(fillChannels.red, fillChannels.green, fillChannels.blue, {
+              id: layerEntry.id,
+              name: layerEntry.name,
+              kind: "shape",
+            });
           }
-        ], { synchronousExecution: true });
-      }
-    }, { commandName: "Replace Color Globally" });
 
-    // Update state map without re-scanning
-    colorManagerState.foundColors = colorManagerState.foundColors.map(e =>
-      e.hex === selectedHex
-        ? { ...e, hex: toHex, r: toRgb.r, g: toRgb.g, b: toRgb.b }
-        : e
-    );
-    colorManagerState.selectedHex = toHex;
+          const solidFill = descriptor.layerEffects && descriptor.layerEffects.solidFill;
+          const effectColor = Array.isArray(solidFill)
+            ? solidFill[0] && solidFill[0].color
+            : solidFill && solidFill.color;
+          const effectChannels = getColorChannels(effectColor);
+          if (effectChannels) {
+            recordRawColor(effectChannels.red, effectChannels.green, effectChannels.blue, {
+              id: layerEntry.id,
+              name: layerEntry.name,
+              kind: "effect",
+            });
+          }
+        });
+      }
+    }, {
+      commandName: "Scan Colors",
+    });
+
+    colorManagerState.foundColors = Object.entries(_colorMap)
+      .map(([hex, value]) => ({
+        hex,
+        r: value.r,
+        g: value.g,
+        b: value.b,
+        layers: value.layers,
+        count: value.layers.length,
+      }))
+      .sort((left, right) => right.count - left.count);
     renderColorSwatches();
-    selectSwatchColor(toHex);
-    setStatus("Done — replaced " + selectedHex.toUpperCase() + " with " + toHex.toUpperCase(), "success");
-  } catch(e) {
-    showError("Replace failed", e);
+
+    if (colorManagerState.smartObjectCount > 0) {
+      setScanNote("Smart object internals are only partially exposed by Photoshop UXP, so embedded colors may need manual source selection.");
+    } else {
+      setScanNote("");
+    }
+
+    const preferredSelection =
+      normalizeHex(options.preserveSelection) ||
+      colorManagerState.selectedHex ||
+      (colorManagerState.foundColors[0] && colorManagerState.foundColors[0].hex);
+
+    if (preferredSelection) {
+      setSelectedSource(preferredSelection, { keepTarget: !!options.keepTarget });
+    } else {
+      updateEditorLayerPills([]);
+      setSourcePreview(null);
+    }
+
+    if (!options.skipStatus) {
+      setStatus("Found " + colorManagerState.foundColors.length + " colors", "success");
+    }
+  } catch (error) {
+    showError("Scan failed", error);
   }
 }
 
-// ─── INIT ────────────────────────────────────────────────────────────────────
+function getSelectedEntries(sourceHex) {
+  const normalized = normalizeHex(sourceHex);
+  if (!normalized) return [];
+  const entry = colorManagerState.foundColors.find((item) => item.hex === normalized);
+  return entry ? entry.layers.slice() : [];
+}
+
+function addMatchingEntry(matchSet, matches, layerEntry, extra = {}) {
+  const signature = [
+    layerEntry.id,
+    extra.kind || "",
+    extra.path || "",
+    extra.rangeIndex !== undefined ? extra.rangeIndex : "",
+  ].join("|");
+
+  if (matchSet.has(signature)) return;
+  matchSet.add(signature);
+  matches.push({
+    id: layerEntry.id,
+    name: layerEntry.name,
+    kind: extra.kind || layerEntry.kind || "",
+    path: extra.path || "",
+    rangeIndex: extra.rangeIndex,
+    from: extra.from,
+    to: extra.to,
+    sourceHex: extra.sourceHex || null,
+  });
+}
+
+function collectMatchingEntriesByHex(layerEntry, descriptor, sourceHex, matches, matchSet) {
+  if (!descriptor || descriptor._obj === "error") return;
+
+  const { textKey, ranges, path } = getTextStyleRanges(descriptor);
+  const fallbackStyle =
+    (textKey && textKey.textStyle) ||
+    (descriptor && descriptor.textStyle) ||
+    null;
+
+  if (ranges.length > 0) {
+    ranges.forEach((range, rangeIndex) => {
+      const style = range && range.textStyle;
+      const rangeHex = style && colorToHex(style.color);
+      if (rangeHex !== sourceHex) return;
+      addMatchingEntry(matchSet, matches, layerEntry, {
+        kind: "text",
+        path,
+        rangeIndex,
+        from: range.from,
+        to: range.to,
+        sourceHex: rangeHex,
+      });
+    });
+  } else if (fallbackStyle && colorToHex(fallbackStyle.color) === sourceHex) {
+    addMatchingEntry(matchSet, matches, layerEntry, {
+      kind: "text",
+      path: "textKey.textStyle.color",
+      rangeIndex: 0,
+      sourceHex,
+    });
+  }
+
+  const adjustments = Array.isArray(descriptor.adjustment) ? descriptor.adjustment : [];
+  adjustments.forEach((adjustment, adjustmentIndex) => {
+    const colorHex = adjustment && adjustment.color && colorToHex(adjustment.color);
+    if (adjustment && adjustment._obj === "solidColorLayer" && colorHex === sourceHex) {
+      addMatchingEntry(matchSet, matches, layerEntry, {
+        kind: "fill",
+        path: "adjustment." + adjustmentIndex + ".color",
+        sourceHex: colorHex,
+      });
+    }
+  });
+
+  const fillHex = descriptor.fillContents && descriptor.fillContents.color && colorToHex(descriptor.fillContents.color);
+  if (fillHex === sourceHex) {
+    addMatchingEntry(matchSet, matches, layerEntry, {
+      kind: "shape",
+      path: "fillContents.color",
+      sourceHex: fillHex,
+    });
+  }
+
+  const solidFill = descriptor.layerEffects && descriptor.layerEffects.solidFill;
+  const effectColor = Array.isArray(solidFill) ? solidFill[0] && solidFill[0].color : solidFill && solidFill.color;
+  const effectHex = colorToHex(effectColor);
+  if (effectHex === sourceHex) {
+    addMatchingEntry(matchSet, matches, layerEntry, {
+      kind: "effect",
+      path: "layerEffects.solidFill.color",
+      sourceHex: effectHex,
+    });
+  }
+}
+
+async function findEditableEntriesByHex(sourceHex) {
+  const normalized = normalizeHex(sourceHex);
+  const doc = app.activeDocument;
+  if (!normalized || !doc) return [];
+
+  const leafLayers = [];
+  collectLeafLayers(doc.layers, leafLayers);
+  if (leafLayers.length === 0) return [];
+
+  const matches = [];
+  const matchSet = new Set();
+
+  await core.executeAsModal(async () => {
+    const chunkSize = 30;
+
+    for (let index = 0; index < leafLayers.length; index += chunkSize) {
+      const chunk = leafLayers.slice(index, index + chunkSize);
+      const commands = chunk.map((entry) => ({
+        _obj: "get",
+        _target: [
+          { _ref: "layer", _id: entry.id },
+          { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
+        ],
+        _options: { dialogOptions: "dontDisplay" },
+      }));
+
+      let results = [];
+      try {
+        results = await action.batchPlay(commands, {
+          continueOnError: true,
+          synchronousExecution: true,
+        });
+      } catch (_) {
+        results = [];
+      }
+
+      results.forEach((descriptor, resultIndex) => {
+        if (!descriptor || descriptor._obj === "error") return;
+        const layerEntry = chunk[resultIndex];
+        if (!layerEntry) return;
+        collectMatchingEntriesByHex(layerEntry, descriptor, normalized, matches, matchSet);
+      });
+    }
+  }, {
+    commandName: "Find Source Color",
+  });
+
+  return matches;
+}
+
+function buildTextReplaceCommands(layerIds, descriptorsById, sourceHex, newColor) {
+  const commands = [];
+
+  layerIds.forEach((layerId) => {
+    const descriptor = descriptorsById.get(layerId);
+    if (!descriptor || !descriptor.textKey) return;
+
+    const textKey = JSON.parse(JSON.stringify(descriptor.textKey));
+    let changed = false;
+    const sourceRanges = Array.isArray(textKey.textStyleRange)
+      ? textKey.textStyleRange
+      : Array.isArray(descriptor.textStyleRange)
+        ? JSON.parse(JSON.stringify(descriptor.textStyleRange))
+        : [];
+
+    if (sourceRanges.length > 0) {
+      textKey.textStyleRange = sourceRanges.map((range) => {
+        const nextRange = { ...range };
+        const style = { ...(range.textStyle || {}) };
+        if (colorToHex(style.color) === sourceHex) {
+          style.color = newColor;
+          nextRange.textStyle = style;
+          changed = true;
+        }
+        return nextRange;
+      });
+    } else if (textKey.textStyle && colorToHex(textKey.textStyle.color) === sourceHex) {
+      textKey.textStyle = { ...textKey.textStyle, color: newColor };
+      changed = true;
+    } else if (descriptor.textStyle && colorToHex(descriptor.textStyle.color) === sourceHex) {
+      textKey.textStyle = { ...(textKey.textStyle || {}), color: newColor };
+      changed = true;
+    }
+
+    if (!changed) return;
+
+    commands.push({
+      _obj: "set",
+      _target: [{ _ref: "layer", _id: layerId }],
+      to: { _obj: "textLayer", textKey },
+      _options: { dialogOptions: "dontDisplay" },
+    });
+  });
+
+  return commands;
+}
+
+async function replaceShapeOrFillColor(layerEntries, newColor) {
+  const uniqueIds = [...new Set(layerEntries.map((entry) => entry.id))];
+
+  for (const layerId of uniqueIds) {
+    await action.batchPlay(
+      [
+        {
+          _obj: "select",
+          _target: [{ _ref: "layer", _id: layerId }],
+          makeVisible: false,
+        },
+        {
+          _obj: "set",
+          _target: [{ _ref: "contentLayer", _enum: "ordinal", _value: "targetEnum" }],
+          to: { _obj: "solidColorLayer", color: newColor },
+          _options: { dialogOptions: "dontDisplay" },
+        },
+      ],
+      { continueOnError: true }
+    );
+  }
+}
+
+async function replaceEffectColor(layerEntries, newColor) {
+  const uniqueIds = [...new Set(layerEntries.map((entry) => entry.id))];
+
+  for (const layerId of uniqueIds) {
+    await action.batchPlay(
+      [
+        {
+          _obj: "set",
+          _target: [{ _ref: "layer", _id: layerId }],
+          to: {
+            _obj: "layer",
+            layerEffects: {
+              solidFill: {
+                _obj: "solidFill",
+                color: newColor,
+              },
+            },
+          },
+          _options: { dialogOptions: "dontDisplay" },
+        },
+      ],
+      { continueOnError: true }
+    );
+  }
+}
+
+async function replaceColorGlobally() {
+  const sourceInput = document.getElementById("source-color-hex-input");
+  const sourceHex = normalizeHex((sourceInput && sourceInput.value) || colorManagerState.selectedHex);
+  if (!sourceHex) {
+    setStatus("Choose or type a source color first.", "error");
+    return;
+  }
+
+  let sourceEntries = getSelectedEntries(sourceHex);
+  if (sourceEntries.length === 0) {
+    sourceEntries = await findEditableEntriesByHex(sourceHex);
+  }
+
+  if (sourceEntries.length === 0) {
+    const smartObjectHint = colorManagerState.smartObjectCount > 0
+      ? " Smart object internals are still limited by current UXP APIs."
+      : "";
+    setStatus("That source color was not found in editable text, shapes, fills or layer effects." + smartObjectHint, "error");
+    return;
+  }
+
+  if (getSelectedEntries(sourceHex).length === 0) {
+    setSelectedSource(sourceHex, { syncInput: true, keepTarget: true });
+    updateEditorLayerPills(sourceEntries);
+  }
+
+  const targetRgb = hsbToRgb(colorManagerState.newH, colorManagerState.newS, colorManagerState.newB);
+  const targetHex = rgbToHex(targetRgb.r, targetRgb.g, targetRgb.b);
+  const newColor = {
+    _obj: "RGBColor",
+    red: targetRgb.r,
+    green: targetRgb.g,
+    blue: targetRgb.b,
+  };
+
+  const textLayerIds = [...new Set(sourceEntries.filter((entry) => entry.kind === "text").map((entry) => entry.id))];
+  const shapeEntries = sourceEntries.filter((entry) => entry.kind === "shape" || entry.kind === "fill");
+  const effectEntries = sourceEntries.filter((entry) => entry.kind === "effect");
+
+  setStatus("Replacing color...", "working");
+
+  try {
+    await core.executeAsModal(async () => {
+      if (textLayerIds.length > 0) {
+        const descriptorsById = await fetchLayerDescriptors(textLayerIds.map((id) => ({ id, name: "", layerKind: "text" })));
+        const textCommands = buildTextReplaceCommands(textLayerIds, descriptorsById, sourceHex, newColor);
+        if (textCommands.length > 0) {
+          await action.batchPlay(textCommands, { continueOnError: true });
+        }
+      }
+
+      if (shapeEntries.length > 0) {
+        await replaceShapeOrFillColor(shapeEntries, newColor);
+      }
+
+      if (effectEntries.length > 0) {
+        await replaceEffectColor(effectEntries, newColor);
+      }
+    }, { commandName: "Replace Color Globally" });
+
+    await scanAllColors({
+      preserveSelection: targetHex,
+      keepTarget: true,
+      skipStatus: true,
+    });
+
+    setSelectedSource(targetHex, { syncInput: true, keepTarget: true });
+    setStatus("Replaced color globally.", "success");
+  } catch (error) {
+    showError("Replace failed", error);
+  }
+}
 
 function initColorManager() {
-  // Guard: don't double-init
-  if (window._colorManagerInited) return;
-  window._colorManagerInited = true;
+  if (window._colorInited) return;
+  window._colorInited = true;
 
-  const btnScan  = document.getElementById("btn-scan-colors");
-  const btnApply = document.getElementById("btn-apply-color-replace");
-  if (btnScan)  btnScan.addEventListener("click", scanAllColors);
-  if (btnApply) btnApply.addEventListener("click", replaceColorGlobally);
+  const scanButton = document.getElementById("btn-scan-colors");
+  if (scanButton) scanButton.addEventListener("click", () => scanAllColors());
+
+  const refreshButton = document.getElementById("btn-refresh-colors");
+  if (refreshButton) {
+    refreshButton.addEventListener("click", () => {
+      const sourceInput = document.getElementById("source-color-hex-input");
+      scanAllColors({
+        preserveSelection: normalizeHex((sourceInput && sourceInput.value) || colorManagerState.selectedHex),
+        keepTarget: true,
+      });
+    });
+  }
+
+  const applyButton = document.getElementById("btn-apply-color-replace");
+  if (applyButton) applyButton.addEventListener("click", replaceColorGlobally);
 
   initColorWheel();
-  drawColorWheel();
+  updateEditorLayerPills([]);
+  setSourcePreview(null);
+  syncPickerFromHSB(true);
+  drawColorWheel(true);
+  updateWheelCursor();
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initColorManager);
-} else {
-  initColorManager();
-}
+document.addEventListener("DOMContentLoaded", initColorManager);
+if (document.readyState !== "loading") initColorManager();
