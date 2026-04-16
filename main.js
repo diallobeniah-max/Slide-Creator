@@ -1201,6 +1201,8 @@ function handleButtonClick(event) {
     case "btn-crop-slides":    cropSlides();            break;
     case "btn-export-slides":  exportSlides();          break;
 
+    case "btn-rasterize":      rasterizeSelectedLayers(); break;
+    case "btn-organize-slides": organizeLayersIntoSlides(); break;
     case "btn-delete-slides":  deleteSelectedSlides();  break;
     default: break;
   }
@@ -1493,6 +1495,118 @@ async function autoCalculateAndCreateSlide() {
 }
 
 
+async function organizeLayersIntoSlides() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    showError("Organization failed", new Error("No active document open."));
+    return;
+  }
+  
+  const { slideW } = getSlideInputs();
+  const docWidth = Number(doc.width);
+  // Auto-detect the actual number of slides present on the canvas
+  const activeSlideCount = Math.max(1, Math.round(docWidth / slideW));
+  
+  if (activeSlideCount <= 1) {
+    showError("Organization failed", new Error("Your current document canvas is not wide enough to be sliced into multiple slides based on your Slide Setup width."));
+    return;
+  }
+  
+  // The exact physical width of each slide slice
+  const sliceW = docWidth / activeSlideCount;
+  setStatus(`Organizing layers into ${activeSlideCount} slide groups...`, "working");
+
+  try {
+    await core.executeAsModal(async () => {
+      const rootLayers = Array.from(doc.layers || []);
+      const slideBaskets = {}; // slideIdx -> [layerId]
+      
+      function processLayer(layer) {
+        if (layer.isBackgroundLayer) return;
+        if (layer.kind === constants.LayerKind.GROUP && layer.name.match(/^Slide \d+/i)) return; // Skip existing Slide groups
+        
+        let bounds = null;
+        try {
+          bounds = getArtboardLikeBounds(layer);
+        } catch(e) {}
+        
+        if (!bounds) {
+          // Empty or invalid bounds on a group? Trace its children.
+          if (layer.kind === constants.LayerKind.GROUP && layer.layers) {
+            Array.from(layer.layers).forEach(child => processLayer(child));
+          }
+          return;
+        }
+        
+        const l = bounds.left;
+        const r = bounds.right;
+        const docW = r - l;
+        
+        if (l === 0 && r === 0 && Math.round(bounds.bottom - bounds.top) === 0) return;
+        
+        // Intelligent Nesting: If a group spans wildly across multiple slides, we shatter it 
+        // to assign its children distinctly to different slides.
+        if (layer.kind === constants.LayerKind.GROUP && layer.layers && layer.layers.length > 0) {
+          if (docW > sliceW * 1.05) {
+            Array.from(layer.layers).forEach(child => processLayer(child));
+            return;
+          }
+        }
+        
+        // Assign to Slide
+        const centerX = (l + r) / 2;
+        let sIdx = Math.floor(centerX / sliceW) + 1;
+        if (sIdx < 1) sIdx = 1;
+        if (sIdx > activeSlideCount) sIdx = activeSlideCount;
+        
+        if (!slideBaskets[sIdx]) slideBaskets[sIdx] = [];
+        slideBaskets[sIdx].push(toNumberId(layer.id));
+      }
+      
+      // Seed processing
+      for (const layer of rootLayers) {
+        processLayer(layer);
+      }
+      
+      const colors = ["red", "orange", "yellowColor", "green", "blue", "violet", "gray"];
+      const slideIndices = Object.keys(slideBaskets).map(Number).sort((a,b) => a - b);
+      
+      for (const sIdx of slideIndices) {
+         const ids = slideBaskets[sIdx];
+         if (ids.length === 0) continue;
+         
+         await action.batchPlay([{
+            _obj: "select",
+            _target: ids.map(id => ({ _ref: "layer", _id: id })),
+            makeVisible: false
+         }], { synchronousExecution: true });
+         
+         await action.batchPlay([{
+            _obj: "make",
+            _target: [{ _ref: "layerSection" }],
+            from: { _ref: "layer", _enum: "ordinal", _value: "targetEnum" },
+            name: `Slide ${sIdx}`
+         }], { synchronousExecution: true });
+         
+         const colorValue = colors[(sIdx - 1) % colors.length];
+         await action.batchPlay([{
+            _obj: "set",
+            _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }],
+            to: { _obj: "layer", color: { _enum: "color", _value: colorValue } }
+         }], { synchronousExecution: true });
+      }
+      
+    }, { commandName: "Organize Layers into Slides" });
+    
+    if (typeof refreshLayerList === "function") refreshLayerList();
+    setStatus("Layers successfully grouped and colored by slide!", "success");
+    
+  } catch(e) {
+    showError("Organize failed", e);
+  }
+}
+
+
 async function addGuides() {
   const { slideW, slideH, slideCount } = getSlideInputs();
   setStatus("Adding guides...", "working");
@@ -1560,6 +1674,7 @@ const BUTTON_DEFS = {
     "btn-smart-merge":    { title:"Merge all into ONE Smart Object", variant:"smart-merge", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="8" height="8" rx="1"/><path d="M10 6h4M6 10v4M18 10v4M10 18h4"/></svg>` },
     "btn-place-embed":    { title:"Place Embedded",       variant:"place-embed", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="8 11 12 15 16 11"/><path d="M8 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/></svg>` },
     "btn-new-layer":      { title:"Create New Layer",     variant:"new-layer", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/><rect x="2" y="2" width="20" height="20" rx="3"/></svg>` },
+    "btn-rasterize":      { title:"Rasterize Layer",      svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M3 13l4-4 4 4 6-6 4 4"/></svg>` },
     "btn-align-left":     { title:"Align Left",           svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="4" x2="4" y2="20"/><rect x="8" y="6" width="12" height="4"/><rect x="8" y="14" width="8" height="4"/></svg>` },
     "btn-align-h-center": { title:"Align H Center",       svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="4" x2="12" y2="20"/><rect x="4" y="7" width="16" height="4"/><rect x="7" y="13" width="10" height="4"/></svg>` },
     "btn-align-right":    { title:"Align Right",          svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="20" y1="4" x2="20" y2="20"/><rect x="4" y="6" width="12" height="4"/><rect x="8" y="14" width="8" height="4"/></svg>` },
@@ -1579,7 +1694,7 @@ const DEFAULT_LAYOUT = [
     [{ id:"g-transform",  name:"Transform",  buttons:["btn-width","btn-both","btn-stretch-all","btn-rotate-left","btn-rotate-right","btn-smart-object","btn-smart-merge","btn-place-embed","btn-new-layer"] }],
     [{ id:"g-align",      name:"Align",      buttons:["btn-align-left","btn-align-h-center","btn-align-right","btn-align-top","btn-align-v-center","btn-align-bottom"] }],
     [{ id:"g-flip",       name:"Flip",       buttons:["btn-distribute-h","btn-distribute-v"] },
-     { id:"g-actions",    name:"Actions",    buttons:["btn-visibility","btn-invert","btn-delete"] }]
+     { id:"g-actions",    name:"Actions",    buttons:["btn-visibility","btn-invert","btn-delete","btn-rasterize"] }]
 ];
 
 const STORAGE_KEY = "autosizelayer_layout_v8";
@@ -2004,6 +2119,7 @@ function fireAction(id) {
     const map = {
         "btn-visibility":     toggleVisibility,
         "btn-invert":         invertColors,
+        "btn-rasterize":      rasterizeSelectedLayers,
         "btn-smart-object":   convertToSmartObject,
         "btn-smart-merge":    convertToSmartObjectMerged,
         "btn-new-layer":      createNewLayer,
@@ -2042,6 +2158,32 @@ async function invertColors() {
             await action.batchPlay([{ _obj:"invert" }], {});
         }
     }, { commandName:"Invert Colors" });
+}
+
+async function rasterizeSelectedLayers() {
+  const doc = app.activeDocument;
+  if (!doc) {
+      showError("Rasterize failed", new Error("No active document."));
+      return;
+  }
+  const layers = Array.from(doc.activeLayers || []);
+  if (layers.length === 0) {
+      showError("Rasterize failed", new Error("No layers selected."));
+      return;
+  }
+  setStatus("Rasterizing layers...", "working");
+  try {
+      await core.executeAsModal(async () => {
+          await action.batchPlay([{
+              _obj: "rasterizeLayer",
+              _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }]
+          }], { synchronousExecution: true });
+      }, { commandName: "Rasterize Layers" });
+      setStatus("Layers rasterized", "success");
+      if (typeof refreshLayerList === "function") refreshLayerList();
+  } catch (e) {
+      showError("Rasterize failed", e);
+  }
 }
 
 async function toggleVisibility() {

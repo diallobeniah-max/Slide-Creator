@@ -53,23 +53,25 @@
 
           <div class="tab-icon-divider"></div>
 
-          <div role="button" tabindex="0" class="tab-icon-btn" data-tab-button="export"
-            title="Export" aria-label="Export">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-          </div>
-
-          <div class="tab-icon-divider"></div>
-
           <div role="button" tabindex="0" class="tab-icon-btn" data-tab-button="layers"
             title="Layers" aria-label="Layers">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
               <polyline points="2 12 12 17 22 12"/>
               <polyline points="2 17 12 22 22 17"/>
+            </svg>
+          </div>
+
+          <div class="tab-icon-divider"></div>
+
+          <div role="button" tabindex="0" class="tab-icon-btn" data-tab-button="colors"
+            title="Colors" aria-label="Colors">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 2a10 10 0 0 1 0 20"/>
+              <path d="M2 12h20"/>
+              <path d="M12 2C6.477 2 2 6.477 2 12"/>
+              <path d="M12 2c5.523 0 10 4.477 10 10"/>
             </svg>
           </div>
 
@@ -343,9 +345,6 @@
             you want a clean canvas.
           </p>
         </section>
-      </section>
-
-      <section class="tab-panel" data-tab-panel="export">
         <section class="card">
           <div class="section-header">
             <span class="section-kicker">Deliver</span>
@@ -408,7 +407,6 @@
               >Export All Slides</sp-button
             >
           </div>
-
         </section>
 
         <section class="card" id="delete-slides-card">
@@ -449,6 +447,22 @@
       </section>
 
       <section class="tab-panel" data-tab-panel="layers">
+        <section class="card">
+          <div class="section-header">
+            <span class="section-kicker">Auto</span>
+            <span class="section-title">Organize by Slides</span>
+          </div>
+
+          <div class="action-group" style="margin-top: 4px;">
+            <sp-button id="btn-organize-slides" variant="secondary" size="m" class="full-width">
+              Organize Layers into Slides
+            </sp-button>
+            <p class="hint-text">
+              Groups all your dispersed layers into Slide folders and assigns them matching colors without changing their physical arrangement on the canvas.
+            </p>
+          </div>
+        </section>
+
         <section class="card">
           <div class="section-header">
             <span class="section-kicker">Manage</span>
@@ -542,6 +556,79 @@
         </section>
       </section>
 
+      <!-- ═══ COLOR MANAGER PANEL ═══ -->
+      <section class="tab-panel" data-tab-panel="colors">
+
+        <section class="card">
+          <div class="section-header">
+            <span class="section-kicker">Scan</span>
+            <span class="section-title">Colors in Design</span>
+          </div>
+          <sp-button id="btn-scan-colors" variant="secondary" size="m" class="full-width">
+            Scan All Colors
+          </sp-button>
+          <p class="hint-text">Finds every solid color across text, shapes and fill layers in the active document.</p>
+        </section>
+
+        <section class="card" id="color-swatches-card">
+          <div class="section-header">
+            <span class="section-kicker">Found</span>
+            <span class="section-title">Color List</span>
+          </div>
+          <div id="color-swatch-list" class="color-swatch-list">
+            <span class="no-layers-msg">Tap "Scan All Colors" to begin.</span>
+          </div>
+        </section>
+
+        <section class="card" id="color-editor-card" class="hidden" style="display:none;">
+          <div class="section-header">
+            <span class="section-kicker">Pick</span>
+            <span class="section-title">New Color</span>
+          </div>
+          <div id="color-editor-layer-pills"></div>
+
+          <div class="color-wheel-wrap">
+            <canvas id="color-wheel-canvas" width="180" height="180"></canvas>
+            <div id="color-wheel-cursor"></div>
+          </div>
+
+          <div class="color-sliders">
+            <div class="slider-row">
+              <span class="slider-label">H</span>
+              <input type="range" id="slider-h" min="0" max="360" value="0" class="color-slider hue-slider">
+              <span class="slider-val" id="val-h">0</span>
+            </div>
+            <div class="slider-row">
+              <span class="slider-label">S</span>
+              <input type="range" id="slider-s" min="0" max="100" value="100" class="color-slider">
+              <span class="slider-val" id="val-s">100</span>
+            </div>
+            <div class="slider-row">
+              <span class="slider-label">B</span>
+              <input type="range" id="slider-b" min="0" max="100" value="100" class="color-slider">
+              <span class="slider-val" id="val-b">100</span>
+            </div>
+          </div>
+
+          <div class="color-preview-row">
+            <div class="color-preview-box">
+              <div id="color-preview-from" class="color-preview-half" title="Original"></div>
+              <div id="color-preview-to" class="color-preview-half" title="New"></div>
+            </div>
+            <div class="color-hex-wrap">
+              <span class="field-label">Hex</span>
+              <sp-textfield id="color-hex-input" value="#ff0000" size="s" class="full-width"></sp-textfield>
+            </div>
+          </div>
+
+          <sp-button id="btn-apply-color-replace" variant="cta" size="m" class="full-width" style="margin-top:8px;">
+            Replace Color Globally
+          </sp-button>
+          <p class="hint-text">Replaces every layer using the selected color with the new color picked above.</p>
+        </section>
+
+      </section>
+
       <section class="tab-panel" data-tab-panel="tools">
         <div id="panel-root" class="auto-resize-root"></div>
       </section>
@@ -553,5 +640,6 @@
     </div>
     <script src="jszip.min.js"></script>
     <script src="main.js"></script>
+    <script src="color_manager.js"></script>
   </body>
 </html>
