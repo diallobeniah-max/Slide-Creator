@@ -1107,15 +1107,14 @@ function bindDropdownPreview(dropdownId, textTargetId, onSync) {
 }
 
 function setActiveTab(tabName) {
-  const tabGroup = document.getElementById("main-tabs");
-  if (tabGroup) {
-    tabGroup.querySelectorAll("[data-tab-button]").forEach((button) => {
-      const active = button.getAttribute("data-tab-button") === tabName;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-selected", active ? "true" : "false");
-    });
-  }
+  // Update icon tab buttons
+  document.querySelectorAll(".tab-icon-btn[data-tab-button]").forEach((button) => {
+    const active = button.getAttribute("data-tab-button") === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
 
+  // Show/hide panels
   document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
     const active = panel.dataset.tabPanel === tabName;
     panel.classList.toggle("active", active);
@@ -1127,15 +1126,15 @@ function setActiveTab(tabName) {
 }
 
 function initTabs() {
-  const tabGroup = document.getElementById("main-tabs");
-  if (!tabGroup) return;
-
-  tabGroup.querySelectorAll("[data-tab-button]").forEach((button) => {
-    button.addEventListener("click", () => setActiveTab(button.getAttribute("data-tab-button") || "artboard"));
+  // Wire all icon tab buttons
+  document.querySelectorAll(".tab-icon-btn[data-tab-button]").forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.getAttribute("data-tab-button")));
   });
 
-  const initialButton = tabGroup.querySelector("[data-tab-button].active") || tabGroup.querySelector("[data-tab-button]");
-  setActiveTab(initialButton ? initialButton.getAttribute("data-tab-button") || "artboard" : "artboard");
+  // Set initial active tab
+  const initialBtn = document.querySelector(".tab-icon-btn.active");
+  const initialTab = initialBtn ? initialBtn.getAttribute("data-tab-button") : "artboard";
+  setActiveTab(initialTab || "artboard");
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
@@ -1195,6 +1194,7 @@ function handleButtonClick(event) {
     case "btn-create-canvas":       createCanvas();                break;
     case "btn-duplicate-artboard":  duplicateArtboardWithDesign(); break;
     case "btn-artboard-from-layer": artboardFromLayerSize();        break;
+    case "btn-auto-aspect-create":  autoCalculateAndCreateSlide(); break;
     case "btn-create-slide":        createSlideLayoutDocument();   break;
     case "btn-add-guides":     addGuides();             break;
     case "btn-clear-guides":   clearGuides();           break;
@@ -1354,9 +1354,9 @@ async function getTargetArtboardInfo(doc) {
   return null;
 }
 
-async function createSlideLayoutDocument() {
-  const { slideW, slideH, slideCount, exportPrefix } = getSlideInputs();
-  const totalW = Math.max(1, slideW * slideCount);
+async function createSlideLayoutDocument(overrideInputs = null) {
+  const { slideW, slideH, slideCount, exportPrefix } = overrideInputs || getSlideInputs();
+  const totalW = Math.max(1, Math.round(slideW * slideCount));
 
   setStatus(`Creating ${slideCount} slides at ${slideW}x${slideH} px...`, "working");
   try {
@@ -1393,6 +1393,105 @@ async function createSlideLayoutDocument() {
     showError("Create Slides failed", e);
   }
 }
+
+async function autoCalculateAndCreateSlide() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    showError("Auto Calculate failed", new Error("No active document open."));
+    return;
+  }
+
+  const { slideCount, exportPrefix } = getSlideInputs();
+  let picW = 0;
+  let picH = 0;
+
+  // Read actual layer/document dimensions inside a modal context
+  try {
+    await core.executeAsModal(async () => {
+      // Try batchPlay to get exact bounds from Photoshop's transform
+      try {
+        const result = await action.batchPlay([{
+          _obj: "get",
+          _target: [
+            { _ref: "layer", _enum: "ordinal", _value: "targetEnum" },
+            { _ref: "document", _enum: "ordinal", _value: "targetEnum" }
+          ],
+          _options: { dialogOptions: "dontDisplay" },
+        }], { synchronousExecution: true });
+
+        if (result && result[0] && result[0].bounds) {
+          const b = result[0].bounds;
+          const left   = b.left   && b.left._value   !== undefined ? b.left._value   : Number(b.left);
+          const top    = b.top    && b.top._value    !== undefined ? b.top._value    : Number(b.top);
+          const right  = b.right  && b.right._value  !== undefined ? b.right._value  : Number(b.right);
+          const bottom = b.bottom && b.bottom._value !== undefined ? b.bottom._value : Number(b.bottom);
+          picW = Math.round(Math.abs(right - left));
+          picH = Math.round(Math.abs(bottom - top));
+        }
+      } catch (e) {
+        console.log("batchPlay bounds error:", e);
+      }
+
+      // Fallback: active layer API bounds
+      if (picW <= 0 || picH <= 0) {
+        const activeLayer = (doc.activeLayers && doc.activeLayers[0]) || getPrimaryTopLevelLayer(doc);
+        if (activeLayer) {
+          const bounds = getArtboardLikeBounds(activeLayer);
+          picW = Math.round(bounds.right - bounds.left);
+          picH = Math.round(bounds.bottom - bounds.top);
+        }
+      }
+
+      // Final fallback: full canvas size
+      if (picW <= 0 || picH <= 0 || isNaN(picW) || isNaN(picH)) {
+        picW = Math.round(Number(doc.width));
+        picH = Math.round(Number(doc.height));
+      }
+
+    }, { commandName: "Read Layer Dimensions" });
+  } catch (e) {
+    picW = Math.round(Number(doc.width));
+    picH = Math.round(Number(doc.height));
+    console.log("Modal read error:", e);
+  }
+
+  // The exact width & height of the picture becomes the width & height of ONE slide!
+  const slideW = Math.max(1, picW);
+  const slideH = Math.max(1, picH);
+
+  // Ensure values are strings for UI attributes
+  const wStr = String(slideW);
+  const hStr = String(slideH);
+
+  // Set values onto the DOM elements
+  function setFieldValue(id, val) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.value = val;
+      el.setAttribute("value", String(val));
+    }
+  }
+
+  // Switch preset dropdown to Custom and show the W/H fields
+  syncDropdownSelection("slide-size-preset", "slide-size-preset-inline", "custom");
+  const slideCustomFields = document.getElementById("slide-custom-fields");
+  if (slideCustomFields) slideCustomFields.classList.remove("hidden");
+
+  // Populate the UI fields explicitly
+  setFieldValue("slide-custom-w", wStr);
+  setFieldValue("slide-custom-h", hStr);
+
+  setStatus(`Image detected: ${picW}×${picH} px → each slide: ${wStr}×${hStr} px`, "success");
+
+  // Run the layout build immediately using the precise calculated values in-memory
+  await createSlideLayoutDocument({
+    slideW: slideW,
+    slideH: slideH,
+    slideCount: slideCount,
+    exportPrefix: exportPrefix
+  });
+}
+
 
 async function addGuides() {
   const { slideW, slideH, slideCount } = getSlideInputs();
