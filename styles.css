@@ -42,7 +42,7 @@ body {
     font-size: 12px;
     line-height: 1.45;
     overflow-x: hidden;
-    overflow-y: hidden;
+    overflow-y: auto;
 }
 
 * {
