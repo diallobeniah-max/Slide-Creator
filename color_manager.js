@@ -245,12 +245,28 @@ async function fetchLayerDescriptors(layerEntries) {
   for (let index = 0; index < layerEntries.length; index += chunkSize) {
     const chunk = layerEntries.slice(index, index + chunkSize);
     const commands = chunk.map((entry) => ({
-      _obj: "get",
-      _target: [
-        { _ref: "layer", _id: entry.id },
-        { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
-      ],
-      _options: { dialogOptions: "dontDisplay" },
+      _obj: "multiGet",
+      _target: {
+        _ref: [
+          { _ref: "layer", _id: entry.id },
+          { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
+        ],
+      },
+      extendedReference: [[
+        "name",
+        "textKey",
+        "textStyleRange",
+        "textStyle",
+        "adjustment",
+        "fillContents",
+        "layerEffects",
+        "smartObject",
+        "smartObjectMore",
+      ]],
+      options: {
+        failOnMissingProperty: false,
+        failOnMissingElement: false,
+      },
     }));
 
     let results = [];
@@ -287,12 +303,24 @@ function getTextStyleRanges(descriptor) {
   return { textKey, ranges: [], path: "textKey.textStyleRange" };
 }
 
-function extractTextColors(layerEntry, descriptor) {
-  const { textKey, ranges, path } = getTextStyleRanges(descriptor);
-  const fallbackStyle =
-    (textKey && textKey.textStyle) ||
+function cloneDescriptorValue(value) {
+  return value ? JSON.parse(JSON.stringify(value)) : value;
+}
+
+function getFallbackTextStyle(descriptor) {
+  return (descriptor && descriptor.textKey && descriptor.textKey.textStyle) ||
     (descriptor && descriptor.textStyle) ||
     null;
+}
+
+function getResolvedTextColor(range, fallbackStyle) {
+  if (range && range.textStyle && range.textStyle.color) return range.textStyle.color;
+  return fallbackStyle && fallbackStyle.color ? fallbackStyle.color : null;
+}
+
+function extractTextColors(layerEntry, descriptor) {
+  const { textKey, ranges, path } = getTextStyleRanges(descriptor);
+  const fallbackStyle = getFallbackTextStyle(descriptor);
 
   if (ranges.length === 0 && fallbackStyle && fallbackStyle.color) {
     recordColor(fallbackStyle.color, {
@@ -306,8 +334,9 @@ function extractTextColors(layerEntry, descriptor) {
   }
 
   ranges.forEach((range, rangeIndex) => {
-    if (!range || !range.textStyle || !range.textStyle.color) return;
-    recordColor(range.textStyle.color, {
+    const resolvedColor = getResolvedTextColor(range, fallbackStyle);
+    if (!resolvedColor) return;
+    recordColor(resolvedColor, {
       id: layerEntry.id,
       name: layerEntry.name,
       kind: "text",
@@ -315,6 +344,7 @@ function extractTextColors(layerEntry, descriptor) {
       rangeIndex,
       from: range.from,
       to: range.to,
+      inherited: !(range && range.textStyle && range.textStyle.color),
     });
   });
 }
@@ -342,18 +372,34 @@ function extractShapeFill(layerEntry, descriptor) {
   });
 }
 
+function getLayerEffectEntries(descriptor) {
+  const layerEffects = descriptor && descriptor.layerEffects;
+  if (!layerEffects) return [];
+
+  const supportedEffects = [
+    { key: "solidFill", path: "layerEffects.solidFill.color" },
+    { key: "frameFX", path: "layerEffects.frameFX.color" },
+  ];
+
+  return supportedEffects
+    .map((effect) => {
+      const effectValue = layerEffects[effect.key];
+      const effectDescriptor = Array.isArray(effectValue) ? effectValue[0] : effectValue;
+      return effectDescriptor && effectDescriptor.color
+        ? { path: effect.path, color: effectDescriptor.color }
+        : null;
+    })
+    .filter(Boolean);
+}
+
 function extractLayerEffects(layerEntry, descriptor) {
-  const solidFill = descriptor && descriptor.layerEffects && descriptor.layerEffects.solidFill;
-  if (!solidFill) return;
-
-  const color = Array.isArray(solidFill) ? solidFill[0] && solidFill[0].color : solidFill.color;
-  if (!color) return;
-
-  recordColor(color, {
-    id: layerEntry.id,
-    name: layerEntry.name,
-    kind: "effect",
-    path: "layerEffects.solidFill.color",
+  getLayerEffectEntries(descriptor).forEach((effectEntry) => {
+    recordColor(effectEntry.color, {
+      id: layerEntry.id,
+      name: layerEntry.name,
+      kind: "effect",
+      path: effectEntry.path,
+    });
   });
 }
 
@@ -380,7 +426,7 @@ function renderColorSwatches() {
   if (!list) return;
 
   if (colorManagerState.foundColors.length === 0) {
-    list.innerHTML = '<span class="no-layers-msg">No editable solid colors found.</span>';
+    list.innerHTML = '<span class="no-layers-msg">No editable colors found. Raster content and most smart object internals cannot be scanned by Photoshop UXP.</span>';
     return;
   }
 
@@ -693,118 +739,24 @@ async function scanAllColors(options = {}) {
   _colorMap = {};
 
   try {
+    let descriptorsById = new Map();
+
     await core.executeAsModal(async () => {
-      const chunkSize = 30;
-
-      for (let index = 0; index < leafLayers.length; index += chunkSize) {
-        const chunk = leafLayers.slice(index, index + chunkSize);
-        const commands = chunk.map((entry) => ({
-          _obj: "get",
-          _target: [
-            { _ref: "layer", _id: entry.id },
-            { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
-          ],
-          _options: { dialogOptions: "dontDisplay" },
-        }));
-
-        let results = [];
-        try {
-          results = await action.batchPlay(commands, {
-            continueOnError: true,
-            synchronousExecution: true,
-          });
-        } catch (_) {
-          results = [];
-        }
-
-        results.forEach((descriptor, resultIndex) => {
-          if (!descriptor || descriptor._obj === "error") return;
-
-          const layerEntry = chunk[resultIndex];
-          if (!layerEntry) return;
-
-          if (descriptor.smartObject || descriptor.smartObjectMore || layerEntry.layerKind.includes("smart")) {
-            colorManagerState.smartObjectCount += 1;
-          }
-
-          const { textKey, ranges } = getTextStyleRanges(descriptor);
-          const fallbackTextStyle =
-            (textKey && textKey.textStyle) ||
-            descriptor.textStyle ||
-            null;
-
-          if (ranges.length > 0) {
-            ranges.forEach((range, rangeIndex) => {
-              const channels = getColorChannels(range && range.textStyle && range.textStyle.color);
-              if (!channels) return;
-              recordRawColor(channels.red, channels.green, channels.blue, {
-                id: layerEntry.id,
-                name: layerEntry.name,
-                kind: "text",
-                rangeIndex,
-              });
-            });
-          } else {
-            const channels = getColorChannels(fallbackTextStyle && fallbackTextStyle.color);
-            if (channels) {
-              recordRawColor(channels.red, channels.green, channels.blue, {
-                id: layerEntry.id,
-                name: layerEntry.name,
-                kind: "text",
-                rangeIndex: 0,
-              });
-            }
-          }
-
-          const adjustments = Array.isArray(descriptor.adjustment) ? descriptor.adjustment : [];
-          adjustments.forEach((adjustment) => {
-            if (!adjustment || adjustment._obj !== "solidColorLayer") return;
-            const channels = getColorChannels(adjustment.color);
-            if (!channels) return;
-            recordRawColor(channels.red, channels.green, channels.blue, {
-              id: layerEntry.id,
-              name: layerEntry.name,
-              kind: "fill",
-            });
-          });
-
-          const fillChannels = getColorChannels(descriptor.fillContents && descriptor.fillContents.color);
-          if (fillChannels) {
-            recordRawColor(fillChannels.red, fillChannels.green, fillChannels.blue, {
-              id: layerEntry.id,
-              name: layerEntry.name,
-              kind: "shape",
-            });
-          }
-
-          const solidFill = descriptor.layerEffects && descriptor.layerEffects.solidFill;
-          const effectColor = Array.isArray(solidFill)
-            ? solidFill[0] && solidFill[0].color
-            : solidFill && solidFill.color;
-          const effectChannels = getColorChannels(effectColor);
-          if (effectChannels) {
-            recordRawColor(effectChannels.red, effectChannels.green, effectChannels.blue, {
-              id: layerEntry.id,
-              name: layerEntry.name,
-              kind: "effect",
-            });
-          }
-        });
-      }
+      descriptorsById = await fetchLayerDescriptors(leafLayers);
     }, {
       commandName: "Scan Colors",
     });
 
-    colorManagerState.foundColors = Object.entries(_colorMap)
-      .map(([hex, value]) => ({
-        hex,
-        r: value.r,
-        g: value.g,
-        b: value.b,
-        layers: value.layers,
-        count: value.layers.length,
-      }))
-      .sort((left, right) => right.count - left.count);
+    leafLayers.forEach((layerEntry) => {
+      const descriptor = descriptorsById.get(layerEntry.id);
+      if (!descriptor) return;
+      if (descriptor.smartObject || descriptor.smartObjectMore || layerEntry.layerKind.includes("smart")) {
+        colorManagerState.smartObjectCount += 1;
+      }
+      collectColorDataFromDescriptor(layerEntry, descriptor);
+    });
+
+    colorManagerState.foundColors = buildFoundColors();
     renderColorSwatches();
 
     if (colorManagerState.smartObjectCount > 0) {
@@ -826,7 +778,7 @@ async function scanAllColors(options = {}) {
     }
 
     if (!options.skipStatus) {
-      setStatus("Found " + colorManagerState.foundColors.length + " colors", "success");
+      setStatus("Found " + colorManagerState.foundColors.length + " colors across " + descriptorsById.size + " layers", "success");
     }
   } catch (error) {
     showError("Scan failed", error);
@@ -865,16 +817,12 @@ function addMatchingEntry(matchSet, matches, layerEntry, extra = {}) {
 function collectMatchingEntriesByHex(layerEntry, descriptor, sourceHex, matches, matchSet) {
   if (!descriptor || descriptor._obj === "error") return;
 
-  const { textKey, ranges, path } = getTextStyleRanges(descriptor);
-  const fallbackStyle =
-    (textKey && textKey.textStyle) ||
-    (descriptor && descriptor.textStyle) ||
-    null;
+  const { ranges, path } = getTextStyleRanges(descriptor);
+  const fallbackStyle = getFallbackTextStyle(descriptor);
 
   if (ranges.length > 0) {
     ranges.forEach((range, rangeIndex) => {
-      const style = range && range.textStyle;
-      const rangeHex = style && colorToHex(style.color);
+      const rangeHex = colorToHex(getResolvedTextColor(range, fallbackStyle));
       if (rangeHex !== sourceHex) return;
       addMatchingEntry(matchSet, matches, layerEntry, {
         kind: "text",
@@ -883,6 +831,7 @@ function collectMatchingEntriesByHex(layerEntry, descriptor, sourceHex, matches,
         from: range.from,
         to: range.to,
         sourceHex: rangeHex,
+        inherited: !(range && range.textStyle && range.textStyle.color),
       });
     });
   } else if (fallbackStyle && colorToHex(fallbackStyle.color) === sourceHex) {
@@ -915,16 +864,15 @@ function collectMatchingEntriesByHex(layerEntry, descriptor, sourceHex, matches,
     });
   }
 
-  const solidFill = descriptor.layerEffects && descriptor.layerEffects.solidFill;
-  const effectColor = Array.isArray(solidFill) ? solidFill[0] && solidFill[0].color : solidFill && solidFill.color;
-  const effectHex = colorToHex(effectColor);
-  if (effectHex === sourceHex) {
+  getLayerEffectEntries(descriptor).forEach((effectEntry) => {
+    const effectHex = colorToHex(effectEntry.color);
+    if (effectHex !== sourceHex) return;
     addMatchingEntry(matchSet, matches, layerEntry, {
       kind: "effect",
-      path: "layerEffects.solidFill.color",
+      path: effectEntry.path,
       sourceHex: effectHex,
     });
-  }
+  });
 }
 
 async function findEditableEntriesByHex(sourceHex) {
@@ -936,42 +884,18 @@ async function findEditableEntriesByHex(sourceHex) {
   collectLeafLayers(doc.layers, leafLayers);
   if (leafLayers.length === 0) return [];
 
-  const matches = [];
-  const matchSet = new Set();
+  let descriptorsById = new Map();
 
   await core.executeAsModal(async () => {
-    const chunkSize = 30;
-
-    for (let index = 0; index < leafLayers.length; index += chunkSize) {
-      const chunk = leafLayers.slice(index, index + chunkSize);
-      const commands = chunk.map((entry) => ({
-        _obj: "get",
-        _target: [
-          { _ref: "layer", _id: entry.id },
-          { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
-        ],
-        _options: { dialogOptions: "dontDisplay" },
-      }));
-
-      let results = [];
-      try {
-        results = await action.batchPlay(commands, {
-          continueOnError: true,
-          synchronousExecution: true,
-        });
-      } catch (_) {
-        results = [];
-      }
-
-      results.forEach((descriptor, resultIndex) => {
-        if (!descriptor || descriptor._obj === "error") return;
-        const layerEntry = chunk[resultIndex];
-        if (!layerEntry) return;
-        collectMatchingEntriesByHex(layerEntry, descriptor, normalized, matches, matchSet);
-      });
-    }
+    descriptorsById = await fetchLayerDescriptors(leafLayers);
   }, {
     commandName: "Find Source Color",
+  });
+
+  const matches = [];
+  const matchSet = new Set();
+  leafLayers.forEach((layerEntry) => {
+    collectMatchingEntriesByHex(layerEntry, descriptorsById.get(layerEntry.id), normalized, matches, matchSet);
   });
 
   return matches;
@@ -984,13 +908,23 @@ function buildTextReplaceCommands(layerIds, descriptorsById, sourceHex, newColor
     const descriptor = descriptorsById.get(layerId);
     if (!descriptor || !descriptor.textKey) return;
 
-    const textKey = JSON.parse(JSON.stringify(descriptor.textKey));
+    const textKey = cloneDescriptorValue(descriptor.textKey);
     let changed = false;
+    const fallbackStyle = getFallbackTextStyle(descriptor);
+    const fallbackHex = colorToHex(fallbackStyle && fallbackStyle.color);
     const sourceRanges = Array.isArray(textKey.textStyleRange)
       ? textKey.textStyleRange
       : Array.isArray(descriptor.textStyleRange)
-        ? JSON.parse(JSON.stringify(descriptor.textStyleRange))
+        ? cloneDescriptorValue(descriptor.textStyleRange)
         : [];
+
+    if (fallbackHex === sourceHex) {
+      textKey.textStyle = {
+        ...(cloneDescriptorValue(textKey.textStyle) || {}),
+        color: newColor,
+      };
+      changed = true;
+    }
 
     if (sourceRanges.length > 0) {
       textKey.textStyleRange = sourceRanges.map((range) => {
@@ -1003,11 +937,11 @@ function buildTextReplaceCommands(layerIds, descriptorsById, sourceHex, newColor
         }
         return nextRange;
       });
-    } else if (textKey.textStyle && colorToHex(textKey.textStyle.color) === sourceHex) {
-      textKey.textStyle = { ...textKey.textStyle, color: newColor };
-      changed = true;
-    } else if (descriptor.textStyle && colorToHex(descriptor.textStyle.color) === sourceHex) {
-      textKey.textStyle = { ...(textKey.textStyle || {}), color: newColor };
+    } else if (!changed && fallbackHex === sourceHex) {
+      textKey.textStyle = {
+        ...(cloneDescriptorValue(textKey.textStyle) || {}),
+        color: newColor,
+      };
       changed = true;
     }
 
@@ -1047,23 +981,48 @@ async function replaceShapeOrFillColor(layerEntries, newColor) {
   }
 }
 
-async function replaceEffectColor(layerEntries, newColor) {
-  const uniqueIds = [...new Set(layerEntries.map((entry) => entry.id))];
+function updateEffectColorInDescriptor(layerEffects, effectPath, newColor) {
+  if (!layerEffects || !effectPath) return false;
 
-  for (const layerId of uniqueIds) {
+  const effectMap = {
+    "layerEffects.solidFill.color": "solidFill",
+    "layerEffects.frameFX.color": "frameFX",
+  };
+
+  const effectKey = effectMap[effectPath];
+  if (!effectKey || !layerEffects[effectKey]) return false;
+
+  const effectValue = Array.isArray(layerEffects[effectKey]) ? layerEffects[effectKey][0] : layerEffects[effectKey];
+  if (!effectValue) return false;
+
+  effectValue.color = newColor;
+  return true;
+}
+
+async function replaceEffectColor(layerEntries, newColor, descriptorsById) {
+  const uniqueEntries = [];
+  const seen = new Set();
+
+  layerEntries.forEach((entry) => {
+    const signature = entry.id + "|" + (entry.path || "");
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    uniqueEntries.push(entry);
+  });
+
+  for (const entry of uniqueEntries) {
+    const descriptor = descriptorsById.get(entry.id);
+    const layerEffects = cloneDescriptorValue(descriptor && descriptor.layerEffects);
+    if (!layerEffects || !updateEffectColorInDescriptor(layerEffects, entry.path, newColor)) continue;
+
     await action.batchPlay(
       [
         {
           _obj: "set",
-          _target: [{ _ref: "layer", _id: layerId }],
+          _target: [{ _ref: "layer", _id: entry.id }],
           to: {
             _obj: "layer",
-            layerEffects: {
-              solidFill: {
-                _obj: "solidFill",
-                color: newColor,
-              },
-            },
+            layerEffects,
           },
           _options: { dialogOptions: "dontDisplay" },
         },
@@ -1116,8 +1075,15 @@ async function replaceColorGlobally() {
 
   try {
     await core.executeAsModal(async () => {
+      const descriptorIdsNeedingFetch = [...new Set([
+        ...textLayerIds,
+        ...effectEntries.map((entry) => entry.id),
+      ])];
+      const descriptorsById = descriptorIdsNeedingFetch.length > 0
+        ? await fetchLayerDescriptors(descriptorIdsNeedingFetch.map((id) => ({ id, name: "", layerKind: "" })))
+        : new Map();
+
       if (textLayerIds.length > 0) {
-        const descriptorsById = await fetchLayerDescriptors(textLayerIds.map((id) => ({ id, name: "", layerKind: "text" })));
         const textCommands = buildTextReplaceCommands(textLayerIds, descriptorsById, sourceHex, newColor);
         if (textCommands.length > 0) {
           await action.batchPlay(textCommands, { continueOnError: true });
@@ -1129,7 +1095,7 @@ async function replaceColorGlobally() {
       }
 
       if (effectEntries.length > 0) {
-        await replaceEffectColor(effectEntries, newColor);
+        await replaceEffectColor(effectEntries, newColor, descriptorsById);
       }
     }, { commandName: "Replace Color Globally" });
 

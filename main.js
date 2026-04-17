@@ -1523,13 +1523,8 @@ async function autoCalculateAndCreateSlide() {
 
   setStatus(`Image detected: ${picW}×${picH} px → each slide: ${wStr}×${hStr} px`, "success");
 
-  // Run the layout build immediately using the precise calculated values in-memory
-  await createSlideLayoutDocument({
-    slideW: slideW,
-    slideH: slideH,
-    slideCount: slideCount,
-    exportPrefix: exportPrefix
-  });
+  const slideCountLabel = slideCount === 1 ? "slide" : "slides";
+  setStatus(`Calculated ${wStr}x${hStr} px for each ${slideCountLabel}. Tap Create Slides to build them.`, "success");
 }
 
 
@@ -1712,7 +1707,7 @@ const BUTTON_DEFS = {
   "btn-smart-merge": { title: "Merge all into ONE Smart Object", variant: "smart-merge", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="8" height="8" rx="1"/><path d="M10 6h4M6 10v4M18 10v4M10 18h4"/></svg>` },
   "btn-place-embed": { title: "Place Embedded", variant: "place-embed", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>` },
   "btn-new-layer": { title: "New Layer", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>` },
-  "btn-rasterize": { title: "Rasterize Layer", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M3 13l4-4 4 4 6-6 4 4"/></svg>` },
+  "btn-rasterize": { title: "Rasterize Layer", variant: "rasterize", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="8" rx="1.5"/><path d="M15 5h2M19 5h.01M15 9h.01M19 9h2M15 13h2M19 13h.01M15 17h.01M19 17h2"/><path d="M11 8l4 4"/></svg>` },
   "btn-align-left": { title: "Align Left", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="4" x2="4" y2="20"/><rect x="8" y="6" width="12" height="4"/><rect x="8" y="14" width="8" height="4"/></svg>` },
   "btn-align-h-center": { title: "Align H Center", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="4" x2="12" y2="20"/><rect x="4" y="7" width="16" height="4"/><rect x="7" y="13" width="10" height="4"/></svg>` },
   "btn-align-right": { title: "Align Right", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="20" y1="4" x2="20" y2="20"/><rect x="4" y="6" width="12" height="4"/><rect x="8" y="14" width="8" height="4"/></svg>` },
@@ -1736,8 +1731,223 @@ const DEFAULT_LAYOUT = [
 ];
 
 const STORAGE_KEY = "autosizelayer_layout_v8";
+const AUTO_SAVE_PREFERENCE_KEY = "tools_auto_save_minutes_v1";
 let layout = [];
 let isLayoutEditMode = false;
+const AUTO_SAVE_MINUTES = [3, 5, 10];
+let autoSaveIntervalId = null;
+let autoSaveTargetDocId = null;
+let autoSaveTargetDocTitle = "";
+let autoSaveEndsAt = 0;
+let autoSaveDurationMinutes = null;
+let preferredAutoSaveMinutes = 5;
+let autoSaveLastPulseSecond = null;
+const DEFAULT_HEADER_TITLE = "Slide Creator";
+
+function cloneDefaultLayout() {
+  return JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
+}
+
+function ensureRasterizeButton(layoutState) {
+  const alreadyPresent = layoutState.some((row) =>
+    row.some((group) => (group.buttons || []).includes("btn-rasterize"))
+  );
+  if (alreadyPresent) return;
+
+  const actionsGroup = layoutState.flat().find((group) => group.id === "g-actions");
+  if (actionsGroup) {
+    const deleteIndex = actionsGroup.buttons.indexOf("btn-delete");
+    if (deleteIndex === -1) actionsGroup.buttons.push("btn-rasterize");
+    else actionsGroup.buttons.splice(deleteIndex + 1, 0, "btn-rasterize");
+    return;
+  }
+
+  const defaultActionsGroup = cloneDefaultLayout().flat().find((group) => group.id === "g-actions");
+  if (!defaultActionsGroup) return;
+
+  if (layoutState.length === 0) layoutState.push([]);
+  layoutState[layoutState.length - 1].push(defaultActionsGroup);
+}
+
+function clearAutoSaveTimerState() {
+  if (autoSaveIntervalId) {
+    window.clearInterval(autoSaveIntervalId);
+    autoSaveIntervalId = null;
+  }
+  autoSaveTargetDocId = null;
+  autoSaveTargetDocTitle = "";
+  autoSaveEndsAt = 0;
+  autoSaveDurationMinutes = null;
+  autoSaveLastPulseSecond = null;
+  const headerBrand = document.querySelector(".header-brand");
+  if (headerBrand) headerBrand.classList.remove("auto-save-pulse");
+  const headerTitle = document.querySelector(".header-title");
+  if (headerTitle) headerTitle.textContent = DEFAULT_HEADER_TITLE;
+}
+
+function loadPreferredAutoSaveMinutes() {
+  try {
+    const saved = Number(localStorage.getItem(AUTO_SAVE_PREFERENCE_KEY));
+    if (AUTO_SAVE_MINUTES.includes(saved)) preferredAutoSaveMinutes = saved;
+  } catch (_) { }
+}
+
+function savePreferredAutoSaveMinutes(minutes) {
+  if (!AUTO_SAVE_MINUTES.includes(minutes)) return;
+  preferredAutoSaveMinutes = minutes;
+  try {
+    localStorage.setItem(AUTO_SAVE_PREFERENCE_KEY, String(minutes));
+  } catch (_) { }
+}
+
+function formatAutoSaveRemaining(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function triggerAutoSavePulse(remainingSeconds) {
+  const headerBrand = document.querySelector(".header-brand");
+  const headerTitle = document.querySelector(".header-title");
+  if (!headerBrand) return;
+  if (headerTitle) headerTitle.textContent = `Saving in ${remainingSeconds}`;
+  headerBrand.classList.remove("auto-save-pulse");
+  void headerBrand.offsetWidth;
+  headerBrand.classList.add("auto-save-pulse");
+  window.setTimeout(() => {
+    headerBrand.classList.remove("auto-save-pulse");
+  }, 820);
+}
+
+function updateAutoSaveTimerUI() {
+  const timerCard = document.getElementById("tools-save-timer-card");
+  if (!timerCard) return;
+
+  const buttons = Array.from(timerCard.querySelectorAll(".tools-save-timer-option"));
+  const status = timerCard.querySelector(".tools-save-timer-status");
+  const hasActiveTimer = !!(autoSaveTargetDocId && autoSaveEndsAt > Date.now());
+
+  buttons.forEach((button) => {
+    const buttonMinutes = Number(button.dataset.minutes);
+    const isSelected = hasActiveTimer
+      ? buttonMinutes === autoSaveDurationMinutes
+      : buttonMinutes === preferredAutoSaveMinutes;
+    button.classList.toggle("active", isSelected);
+  });
+
+  if (!status) return;
+
+  if (!hasActiveTimer) {
+    status.textContent = `Default timer: ${preferredAutoSaveMinutes} min. Pick 3, 5, or 10 minutes to start a repeating auto-save loop for the active document.`;
+    return;
+  }
+
+  const remaining = formatAutoSaveRemaining(autoSaveEndsAt - Date.now());
+  status.textContent = `Looping save for "${autoSaveTargetDocTitle}" in ${remaining}. The last 5 seconds pulse green before each save.`;
+}
+
+async function runAutoSaveTimerSave() {
+  const targetDoc = app.documents.find((doc) => doc.id === autoSaveTargetDocId);
+  const timerMinutes = autoSaveDurationMinutes;
+  const docLabel = autoSaveTargetDocTitle || "document";
+
+  clearAutoSaveTimerState();
+  updateAutoSaveTimerUI();
+
+  if (!targetDoc) {
+    showError("Auto-save failed", new Error(`The timed document "${docLabel}" is no longer open.`));
+    return;
+  }
+
+  try {
+    await core.executeAsModal(async () => {
+      await targetDoc.save();
+    }, {
+      commandName: "Timed Save Document",
+      interactive: true,
+    });
+
+    setStatus(`Saved "${targetDoc.title}". Next auto-save in ${timerMinutes} minutes.`, "success");
+    if (app.documents.find((doc) => doc.id === targetDoc.id)) {
+      startAutoSaveTimer(timerMinutes, targetDoc, false);
+    }
+  } catch (e) {
+    showError("Auto-save failed", e);
+  }
+}
+
+function handleAutoSaveTimerTick() {
+  if (!autoSaveTargetDocId) {
+    clearAutoSaveTimerState();
+    updateAutoSaveTimerUI();
+    return;
+  }
+
+  const remainingMs = autoSaveEndsAt - Date.now();
+  if (remainingMs <= 0) {
+    runAutoSaveTimerSave();
+    return;
+  }
+
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  if (remainingSeconds <= 5 && remainingSeconds !== autoSaveLastPulseSecond) {
+    autoSaveLastPulseSecond = remainingSeconds;
+    triggerAutoSavePulse(remainingSeconds);
+  }
+
+  updateAutoSaveTimerUI();
+}
+
+function startAutoSaveTimer(minutes, docOverride = null, persistPreference = true) {
+  const doc = docOverride || app.activeDocument;
+  if (!doc) {
+    showError("Auto-save failed", new Error("No active document."));
+    return;
+  }
+
+  if (persistPreference) savePreferredAutoSaveMinutes(minutes);
+  clearAutoSaveTimerState();
+
+  autoSaveTargetDocId = doc.id;
+  autoSaveTargetDocTitle = doc.title || doc.name || "Untitled";
+  autoSaveDurationMinutes = minutes;
+  autoSaveEndsAt = Date.now() + minutes * 60 * 1000;
+  autoSaveLastPulseSecond = null;
+
+  autoSaveIntervalId = window.setInterval(handleAutoSaveTimerTick, 1000);
+
+  updateAutoSaveTimerUI();
+  setStatus(`Repeating auto-save set for "${autoSaveTargetDocTitle}" every ${minutes} minutes.`, "working");
+}
+
+function renderAutoSaveTimerCard(root) {
+  const timerCard = document.createElement("div");
+  timerCard.id = "tools-save-timer-card";
+  timerCard.className = "tools-save-timer-card";
+  timerCard.innerHTML = `
+    <div class="tools-save-timer-header">
+      <span class="tools-save-timer-kicker">Auto Save</span>
+      <span class="tools-save-timer-title">Timed Save</span>
+    </div>
+    <div class="tools-save-timer-options"></div>
+    <div class="tools-save-timer-status"></div>
+  `;
+
+  const optionsWrap = timerCard.querySelector(".tools-save-timer-options");
+  AUTO_SAVE_MINUTES.forEach((minutes) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tools-save-timer-option";
+    button.dataset.minutes = String(minutes);
+    button.textContent = `${minutes} min`;
+    button.addEventListener("click", () => startAutoSaveTimer(minutes));
+    optionsWrap.appendChild(button);
+  });
+
+  root.appendChild(timerCard);
+  updateAutoSaveTimerUI();
+}
 
 // Layout Saving & Loading logic
 function saveLayout() {
@@ -1745,6 +1955,7 @@ function saveLayout() {
 }
 
 function loadLayout() {
+  loadPreferredAutoSaveMinutes();
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -1754,14 +1965,15 @@ function loadLayout() {
           row.map(g => ({ ...g, buttons: (g.buttons || []).filter(id => BUTTON_DEFS[id]) }))
             .filter(g => g.id)
         );
+        ensureRasterizeButton(layout);
         const allSaved = layout.flat().flatMap(g => g.buttons);
-        const newBtns = Object.keys(BUTTON_DEFS).filter(id => !allSaved.includes(id));
+        const newBtns = Object.keys(BUTTON_DEFS).filter(id => !allSaved.includes(id) && id !== "btn-rasterize");
         if (newBtns.length) layout[0][0].buttons.push(...newBtns);
         return;
       }
     }
   } catch (_) { }
-  layout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
+  layout = cloneDefaultLayout();
 }
 
 function findGroup(id) {
@@ -1818,6 +2030,8 @@ function renderLayout() {
   const jpgSpacer = document.createElement("div");
   jpgSpacer.className = "tools-bottom-spacer";
   root.appendChild(jpgSpacer);
+
+  renderAutoSaveTimerCard(root);
 
   const jpgBtn = document.createElement("div");
   jpgBtn.id = "tools-export-jpg-btn";
