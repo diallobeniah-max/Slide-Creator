@@ -15,18 +15,52 @@ let slides = [];
 let originalDocId = null;
 let selectedSlideId = null;
 let draggedSlideId = null;
+let statusHideTimer = null;
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
 function setStatus(msg, type) {
+  const wrap = document.getElementById("status-wrap");
   const bar = document.getElementById("status-bar");
-  if (bar) {
-    bar.textContent = msg;
-    bar.className = "status-bar" + (type ? " " + type : "");
+  const log = document.getElementById("error-log");
+  const text = typeof msg === "string" ? msg.trim() : String(msg || "").trim();
+
+  if (statusHideTimer) {
+    clearTimeout(statusHideTimer);
+    statusHideTimer = null;
   }
-  if (type !== "error") {
-    const log = document.getElementById("error-log");
+
+  if (!wrap || !bar) return;
+
+  if (!text) {
+    bar.textContent = "";
+    bar.className = "status-bar hidden";
+    wrap.classList.add("hidden");
+    wrap.setAttribute("aria-hidden", "true");
     if (log) log.classList.add("hidden");
+    return;
+  }
+
+  wrap.classList.remove("hidden");
+  wrap.setAttribute("aria-hidden", "false");
+  bar.className = "status-bar" + (type ? " " + type : "");
+  bar.classList.remove("hidden");
+  bar.textContent = text;
+
+  if (type !== "error") {
+    if (log) log.classList.add("hidden");
+  }
+
+  if (type !== "working" && type !== "error") {
+    statusHideTimer = setTimeout(() => {
+      const errorLog = document.getElementById("error-log");
+      if (errorLog && !errorLog.classList.contains("hidden")) return;
+      bar.textContent = "";
+      bar.className = "status-bar hidden";
+      wrap.classList.add("hidden");
+      wrap.setAttribute("aria-hidden", "true");
+      statusHideTimer = null;
+    }, 3200);
   }
 }
 
@@ -2290,7 +2324,7 @@ function initGroupDrag(handleEl, groupId) {
         moved = true; handleEl.classList.add("grip-ready");
         ghost = groupEl.cloneNode(true); ghost.id = "drag-ghost";
         ghost.style.width = rect.width + "px"; ghost.style.opacity = "0.82"; ghost.style.background = "#1e1e1e";
-        ghost.style.borderRadius = "6px"; ghost.style.padding = "4px"; ghost.style.border = "1px solid #555";
+        ghost.style.borderRadius = "0px"; ghost.style.padding = "4px"; ghost.style.border = "1px solid #555";
         document.body.appendChild(ghost); groupEl.style.opacity = "0.2";
       }
       if (moved && ghost) {
@@ -3414,3 +3448,68 @@ async function handleGroupAndColor() {
     showError("Failed to group layers", e);
   }
 }
+
+// Initialize Custom HTML Scrollbar
+document.addEventListener("DOMContentLoaded", () => {
+    const scrollArea = document.getElementById("main-scroll-area");
+    const thumb = document.getElementById("custom-thumb");
+    const track = document.getElementById("custom-scrollbar");
+
+    if (scrollArea && thumb && track) {
+        const updateScrollbar = () => {
+            if (scrollArea.scrollHeight <= scrollArea.clientHeight) {
+                track.style.opacity = "0";
+                track.style.pointerEvents = "none";
+                return;
+            }
+            
+            track.style.opacity = "1";
+            track.style.pointerEvents = "auto";
+            
+            const scrollRatio = scrollArea.scrollTop / (scrollArea.scrollHeight - scrollArea.clientHeight);
+            const thumbHeight = Math.max(20, (scrollArea.clientHeight / scrollArea.scrollHeight) * track.clientHeight);
+            thumb.style.height = `${thumbHeight}px`;
+            const maxScroll = track.clientHeight - thumbHeight;
+            thumb.style.transform = `translateY(${scrollRatio * maxScroll}px)`;
+        };
+
+        let isDragging = false;
+        let startY = 0;
+        let startScrollTop = 0;
+
+        thumb.addEventListener("pointerdown", (e) => {
+            isDragging = true;
+            startY = e.clientY;
+            startScrollTop = scrollArea.scrollTop;
+            thumb.classList.add("active");
+            document.body.style.userSelect = "none"; // Prevent text selection
+            e.preventDefault();
+        });
+
+        window.addEventListener("pointermove", (e) => {
+            if (!isDragging) return;
+            const thumbHeight = Math.max(20, (scrollArea.clientHeight / scrollArea.scrollHeight) * track.clientHeight);
+            const maxScroll = track.clientHeight - thumbHeight;
+            const scrollableRatio = (scrollArea.scrollHeight - scrollArea.clientHeight) / maxScroll;
+            const deltaY = e.clientY - startY;
+            scrollArea.scrollTop = startScrollTop + (deltaY * scrollableRatio);
+        });
+
+        window.addEventListener("pointerup", () => {
+            if (isDragging) {
+                isDragging = false;
+                thumb.classList.remove("active");
+                document.body.style.userSelect = "";
+            }
+        });
+
+        scrollArea.addEventListener("scroll", updateScrollbar);
+        window.addEventListener("resize", updateScrollbar);
+        // Delay to allow layout to settle
+        setTimeout(updateScrollbar, 200);
+        
+        // Ensure scrollbar updates on DOM changes
+        const observer = new MutationObserver(updateScrollbar);
+        observer.observe(scrollArea, { childList: true, subtree: true, attributes: true });
+    }
+});

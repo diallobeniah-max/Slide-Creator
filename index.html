@@ -113,7 +113,8 @@
       </section>
       </div>
 
-      <div class="panel-scroll-area">
+      <div class="panel-scroll-container">
+      <div class="panel-scroll-area" id="main-scroll-area">
       <section class="tab-panel active" data-tab-panel="artboard">
         <section class="card card-emphasis">
           <div class="section-header">
@@ -673,9 +674,13 @@
         <div id="panel-root" class="auto-resize-root"></div>
       </section>
       </div>
+      <div class="custom-scrollbar" id="custom-scrollbar">
+        <div class="custom-scrollbar-thumb" id="custom-thumb"></div>
+      </div>
+      </div>
 
-      <div class="status-wrap">
-        <div class="status-bar" id="status-bar">Ready</div>
+      <div class="status-wrap hidden" id="status-wrap" aria-hidden="true">
+        <div class="status-bar hidden" id="status-bar" aria-live="polite"></div>
         <div class="error-log hidden" id="error-log"></div>
       </div>
     </div>

@@ -75,15 +75,39 @@ input[type="number"] {
 }
 
 .sticky-top-wrap {
-    padding: 16px 20px 18px 20px;
+    position: relative;
+    z-index: 10;
+    padding: 16px 20px 16px 20px;
     flex-shrink: 0;
+    box-shadow: 0 10px 18px -10px rgba(0, 0, 0, 0.45);
+}
+
+.sticky-top-wrap::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20px;
+    right: 20px;
+    height: 1px;
+    background: var(--card-border);
+}
+
+.panel-scroll-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
 }
 
 .panel-scroll-area {
-    flex: 1;
+    margin-right: -24px;
+    padding-right: 24px;
+    height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 0 20px 32px 20px;
+    padding-left: 20px;
+    padding-bottom: 32px;
 }
 
 .panel > *,
@@ -114,14 +138,14 @@ input[type="number"] {
     min-width: 0;
     position: relative;
 }
-
 .header-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 32px;
     height: 32px;
-    border-radius: 9px;
+    margin-right: 12px;
+    border-radius: 0px;
     background: linear-gradient(135deg, rgba(91, 155, 240, 0.25), rgba(47, 125, 246, 0.5));
     color: #dbe9ff;
     font-size: 11px;
@@ -187,7 +211,7 @@ input[type="number"] {
     padding: 3px 4px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 11px;
+    border-radius: 0px;
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.04),
         0 2px 8px rgba(0, 0, 0, 0.12);
@@ -210,7 +234,7 @@ input[type="number"] {
     justify-content: center;
     background: transparent;
     border: none;
-    border-radius: 8px;
+    border-radius: 0px;
     color: #a8a8a8;
     cursor: pointer;
     position: relative;
@@ -252,7 +276,7 @@ input[type="number"] {
     bottom: 2px;
     width: 10px;
     height: 2px;
-    border-radius: 999px;
+    border-radius: 0px;
     background: #5b9bf0;
     box-shadow: 0 0 5px rgba(91, 155, 240, 0.55);
     transform: translateX(-50%) scaleX(0);
@@ -278,7 +302,7 @@ input[type="number"] {
 .history-shell {
     background: rgba(255, 255, 255, 0.035);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    border-radius: 0px;
     padding: 14px;
     box-shadow: 
         inset 0 1px 0 rgba(255, 255, 255, 0.04),
@@ -313,7 +337,7 @@ input[type="number"] {
 .tab-shell {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    border-radius: 0px;
     padding: 5px 8px;
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.04),
@@ -347,7 +371,7 @@ input[type="number"] {
     justify-content: center;
     background: transparent;
     border: none;
-    border-radius: 8px;
+    border-radius: 0px;
     cursor: pointer;
     position: relative;
     color: #999999;
@@ -447,7 +471,7 @@ input[type="number"] {
     transform: translateX(-50%);
     width: 14px;
     height: 2px;
-    border-radius: 2px;
+    border-radius: 0px;
 }
 .tab-icon-btn[data-tab-button="artboard"].active::after { background: #5b9bf0; box-shadow: 0 0 5px #5b9bf0; }
 .tab-icon-btn[data-tab-button="slide"].active::after    { background: #a06bf5; box-shadow: 0 0 5px #a06bf5; }
@@ -483,8 +507,10 @@ input[type="number"] {
     display: flex;
     flex-direction: column;
     padding: 18px;
-    border-radius: 14px;
+    border-radius: 0px;
     border: 1px solid var(--card-border);
+    overflow: hidden;
+    background-clip: padding-box;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.035));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
@@ -587,9 +613,9 @@ sp-textfield, sp-dropdown, .native-select {
 
     /* Consistent modern corner radii */
     --spectrum-alias-border-radius-regular: 6px;
-    --spectrum-textfield-m-border-radius: 6px;
-    --spectrum-dropdown-m-border-radius: 6px;
-    --spectrum-dropdown-border-radius: 6px;
+    --spectrum-textfield-m-border-radius: 0px;
+    --spectrum-dropdown-m-border-radius: 0px;
+    --spectrum-dropdown-border-radius: 0px;
 
     /* Text Crispness */
     --spectrum-alias-text-color: #ebebeb;
@@ -678,7 +704,7 @@ sp-button {
 .canvas-hint {
     background: rgba(91, 155, 240, 0.1);
     border: 1px solid rgba(91, 155, 240, 0.2);
-    border-radius: 12px;
+    border-radius: 0px;
     padding: 10px 12px;
     font-size: 11px;
     line-height: 1.45;
@@ -745,7 +771,7 @@ sp-button {
 .step-badge {
     width: 18px;
     height: 18px;
-    border-radius: 999px;
+    border-radius: 0px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -788,7 +814,7 @@ sp-button {
     align-items: center;
     justify-content: center;
     padding: 8px 10px;
-    border-radius: 10px;
+    border-radius: 0px;
     background: var(--card-bg);
     color: var(--text-muted);
     font-size: 11px;
@@ -816,7 +842,7 @@ sp-button {
 .error-log {
     max-height: 100px;
     overflow-y: auto;
-    border-radius: 10px;
+    border-radius: 0px;
     padding: 8px;
     background: rgba(231, 76, 60, 0.1);
     border: 1px solid rgba(231, 76, 60, 0.3);
@@ -828,7 +854,7 @@ sp-button {
 
 .delete-slides-container {
     border: 1px solid var(--card-border);
-    border-radius: 10px;
+    border-radius: 0px;
     padding: var(--spacing-s);
     max-height: 180px;
     overflow-y: auto;
@@ -866,7 +892,7 @@ sp-button {
     align-items: center;
     gap: var(--spacing-s);
     padding: 6px;
-    border-radius: 8px;
+    border-radius: 0px;
     background: rgba(255, 255, 255, 0.03);
 }
 
@@ -907,7 +933,7 @@ sp-button {
 
 #panel-root.auto-resize-root::-webkit-scrollbar { width: 8px; }
 #panel-root.auto-resize-root::-webkit-scrollbar-track { background: #1a1a1a; }
-#panel-root.auto-resize-root::-webkit-scrollbar-thumb { background: #6b5a9f; border-radius: 4px; }
+#panel-root.auto-resize-root::-webkit-scrollbar-thumb { background: #6b5a9f; border-radius: 0px; }
 #panel-root.auto-resize-root::-webkit-scrollbar-thumb:hover { background: #8a78bf; }
 
 .panel-topbar {
@@ -924,7 +950,7 @@ sp-button {
     font-size: 10px;
     color: #7b7b7b;
     padding: 2px 7px;
-    border-radius: 4px;
+    border-radius: 0px;
     border: 1px solid #2d2d2d;
     background: #171717;
     cursor: pointer;
@@ -940,34 +966,34 @@ sp-button {
 
 .row-drop-divider { position: relative; height: 6px; display: flex; align-items: center; margin: 1px 0; cursor: default; }
 .row-divider-line { width: 100%; height: 1px; background: #2a2a2a; pointer-events: none; }
-.row-drop-divider.row-drop-active .row-divider-line { height: 3px; background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.6); border-radius: 2px; }
+.row-drop-divider.row-drop-active .row-divider-line { height: 3px; background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.6); border-radius: 0px; }
 
-.side-drop-zone { width: 8px; min-height: 40px; flex-shrink: 0; border-radius: 3px; background: transparent; transition: background 0.1s, width 0.15s; position: relative; }
+.side-drop-zone { width: 8px; min-height: 40px; flex-shrink: 0; border-radius: 0px; background: transparent; transition: background 0.1s, width 0.15s; position: relative; }
 .side-drop-zone::after { content: ""; position: absolute; top: 4px; bottom: 4px; left: 50%; transform: translateX(-50%); width: 1px; background: #2a2a2a; }
 .side-drop-zone.side-drop-active { width: 14px; background: rgba(245,166,35,0.12); }
-.side-drop-zone.side-drop-active::after { width: 3px; background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.6); border-radius: 2px; }
+.side-drop-zone.side-drop-active::after { width: 3px; background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.6); border-radius: 0px; }
 
-.group-grip { display: flex; flex-wrap: wrap; gap: 2px; width: 14px; padding: 3px 2px 2px 2px; cursor: grab; align-self: flex-start; border-radius: 3px; transition: opacity 0.15s; opacity: 0.25; }
+.group-grip { display: flex; flex-wrap: wrap; gap: 2px; width: 14px; padding: 3px 2px 2px 2px; cursor: grab; align-self: flex-start; border-radius: 0px; transition: opacity 0.15s; opacity: 0.25; }
 .group-grip:hover  { opacity: 0.7; }
 .group-grip:active { cursor: grabbing; }
 body:not(.layout-edit-mode) .group-grip { opacity: 0; pointer-events: none; }
 body.layout-edit-mode .group-grip { opacity: 0.65; pointer-events: auto; }
-.group-grip span { display: block; width: 3px; height: 3px; border-radius: 50%; background: #aaa; pointer-events: none; }
+.group-grip span { display: block; width: 3px; height: 3px; border-radius: 0px; background: #aaa; pointer-events: none; }
 .group-grip.grip-ready span { background: #f5a623; }
 .group-grip.grip-ready { opacity: 1; }
 
-.group { display: flex; flex-direction: row; align-items: flex-start; flex: 1; min-width: 0; padding: 2px; border-radius: 5px; transition: background 0.1s; }
+.group { display: flex; flex-direction: row; align-items: flex-start; flex: 1; min-width: 0; padding: 2px; border-radius: 0px; transition: background 0.1s; }
 .group > * { margin-right: 2px; }
 .group > *:last-child { margin-right: 0; }
 .group.group-drop-target { background: rgba(245, 166, 35, 0.07); outline: 1px dashed #f5a623; }
 
-.group-buttons { display: flex; flex-wrap: wrap; min-height: 38px; padding: 2px; border-radius: 4px; transition: background 0.1s; }
+.group-buttons { display: flex; flex-wrap: wrap; min-height: 38px; padding: 2px; border-radius: 0px; transition: background 0.1s; }
 .group-buttons > * { margin: 2px 3px 3px 0; }
 .group-buttons.drag-over { background: rgba(107,90,159,0.08); outline: 1px dashed #b8a7d9; }
 
 .icon-button {
     background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-    width: 44px; height: 38px; border-radius: 8px;
+    width: 44px; height: 38px; border-radius: 0px;
     display: flex; justify-content: center; align-items: center; cursor: pointer;
     border: 1px solid rgba(255,255,255,0.1);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.15);
@@ -1014,7 +1040,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .pill-group {
     display: flex;
     background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-    border-radius: 8px;
+    border-radius: 0px;
     border: 1px solid rgba(255,255,255,0.1);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.15);
     overflow: hidden; height: 38px; flex-shrink: 0;
@@ -1055,7 +1081,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     gap: 10px;
     width: 100%;
     padding: 14px;
-    border-radius: 12px;
+    border-radius: 0px;
     border: 1px solid rgba(111, 170, 255, 0.18);
     background: linear-gradient(180deg, rgba(66, 118, 204, 0.14), rgba(28, 49, 90, 0.08));
     box-shadow: inset 0 1px 0 rgba(170, 210, 255, 0.08), 0 2px 6px rgba(0, 0, 0, 0.18);
@@ -1096,7 +1122,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     align-items: center;
     justify-content: center;
     padding: 0 6px;
-    border-radius: 9px;
+    border-radius: 0px;
     border: 1px solid rgba(142, 194, 255, 0.22);
     background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
     color: #dce9ff;
@@ -1143,7 +1169,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     justify-content: center;
     width: 100%;
     height: 42px;
-    border-radius: 10px;
+    border-radius: 0px;
     border: 1px solid rgba(255, 170, 51, 0.25);
     background: linear-gradient(180deg, rgba(255, 160, 40, 0.12), rgba(255, 140, 20, 0.06));
     box-shadow: inset 0 1px 0 rgba(255, 200, 100, 0.1), 0 2px 6px rgba(0,0,0,0.2);
@@ -1199,7 +1225,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     justify-content: center;
     width: 100%;
     height: 38px;
-    border-radius: 10px;
+    border-radius: 0px;
     border: 1px solid rgba(78, 205, 196, 0.25);
     background: linear-gradient(180deg, rgba(40, 180, 160, 0.12), rgba(30, 140, 120, 0.06));
     box-shadow: inset 0 1px 0 rgba(100, 220, 200, 0.1), 0 2px 6px rgba(0,0,0,0.2);
@@ -1253,7 +1279,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     justify-content: center;
     width: 100%;
     height: 38px;
-    border-radius: 10px;
+    border-radius: 0px;
     border: 1px solid rgba(78, 242, 133, 0.25);
     background: linear-gradient(180deg, rgba(50, 200, 90, 0.12), rgba(40, 160, 70, 0.06));
     box-shadow: inset 0 1px 0 rgba(100, 240, 150, 0.1), 0 2px 6px rgba(0,0,0,0.2);
@@ -1305,7 +1331,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     display: flex;
     align-items: center;
     width: 100%;
-    border-radius: 10px;
+    border-radius: 0px;
     border: 1px solid rgba(255, 170, 51, 0.3);
     background: linear-gradient(180deg, rgba(255, 150, 30, 0.1), rgba(255, 120, 10, 0.05));
     box-shadow: inset 0 1px 0 rgba(255, 200, 100, 0.08), 0 3px 10px rgba(0,0,0,0.25);
@@ -1325,7 +1351,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     padding: 0 10px;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
+    border-radius: 0px;
     color: #ebebeb;
     font-size: 12px;
     font-family: inherit;
@@ -1341,7 +1367,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .jpg-prompt-save {
     height: 30px;
     padding: 0 12px;
-    border-radius: 6px;
+    border-radius: 0px;
     background: linear-gradient(180deg, rgba(255, 160, 40, 0.3), rgba(255, 130, 10, 0.2));
     border: 1px solid rgba(255, 170, 51, 0.4);
     color: #ffcc77;
@@ -1370,7 +1396,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .jpg-prompt-cancel {
     width: 28px;
     height: 30px;
-    border-radius: 6px;
+    border-radius: 0px;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: #888;
@@ -1396,7 +1422,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     height: 180px;
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid var(--card-border);
-    border-radius: 8px;
+    border-radius: 0px;
     overflow-y: auto;
     margin-top: 8px;
     position: relative;
@@ -1405,7 +1431,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 
 .layer-list-scroll::-webkit-scrollbar { width: 6px; }
 .layer-list-scroll::-webkit-scrollbar-track { background: transparent; }
-.layer-list-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+.layer-list-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 0px; }
 .layer-list-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
 .layer-list-inner {
@@ -1475,7 +1501,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .color-swatch-item {
     width: 20px;
     height: 20px;
-    border-radius: 50%;
+    border-radius: 0px;
     cursor: pointer;
     border: 2px solid transparent;
     transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -1511,7 +1537,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     text-transform: uppercase;
     letter-spacing: 0.05em;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: 0px;
     background: rgba(91, 155, 240, 0.1);
     transition: all 0.2s;
 }
@@ -1543,7 +1569,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .layer-export-modal-content {
     background: #2b2b2b;
     border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 12px;
+    border-radius: 0px;
     width: 400px;
     max-height: 80vh;
     display: flex;
@@ -1590,7 +1616,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     display: flex;
     align-items: center;
     padding: 10px 12px;
-    border-radius: 8px;
+    border-radius: 0px;
     margin-bottom: 6px;
     background: rgba(255, 255, 255, 0.05);
     transition: background 0.2s;
@@ -1626,7 +1652,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .layer-export-actions button {
     flex: 1;
     padding: 10px 16px;
-    border-radius: 8px;
+    border-radius: 0px;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
@@ -1685,7 +1711,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     gap: 8px;
     min-height: 42px;
     padding: 7px 9px;
-    border-radius: 8px;
+    border-radius: 0px;
     cursor: pointer;
     transition: background 0.15s;
     border: 1.5px solid transparent;
@@ -1703,7 +1729,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .color-swatch-dot {
     width: 22px;
     height: 22px;
-    border-radius: 50%;
+    border-radius: 0px;
     flex-shrink: 0;
     border: 1.5px solid rgba(255,255,255,0.15);
     box-shadow: 0 0 0 2px rgba(0,0,0,0.3);
@@ -1756,7 +1782,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .color-layer-pill {
     display: inline-block;
     padding: 3px 8px;
-    border-radius: 6px;
+    border-radius: 0px;
     font-size: 12px;
     font-weight: 600;
     background: rgba(255,255,255,0.08);
@@ -1793,7 +1819,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .color-source-preview {
     width: 38px;
     height: 38px;
-    border-radius: 10px;
+    border-radius: 0px;
     flex-shrink: 0;
     background: rgba(255,255,255,0.06);
     border: 1.5px solid rgba(255,255,255,0.12);
@@ -1827,7 +1853,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     --wheel-brightness: 1;
     width: 180px;
     height: 180px;
-    border-radius: 50%;
+    border-radius: 0px;
     cursor: crosshair;
     display: block;
     background:
@@ -1853,7 +1879,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     position: absolute;
     width: 14px;
     height: 14px;
-    border-radius: 50%;
+    border-radius: 0px;
     border: 2.5px solid #fff;
     box-shadow: 0 0 0 1.5px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.5);
     pointer-events: none;
@@ -1890,7 +1916,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     -webkit-appearance: none;
     appearance: none;
     height: 6px;
-    border-radius: 3px;
+    border-radius: 0px;
     background: rgba(255,255,255,0.12);
     outline: none;
     cursor: pointer;
@@ -1901,7 +1927,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     appearance: none;
     width: 14px;
     height: 14px;
-    border-radius: 50%;
+    border-radius: 0px;
     background: #fff;
     box-shadow: 0 1px 4px rgba(0,0,0,0.5);
     cursor: pointer;
@@ -1936,7 +1962,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     display: flex;
     width: 52px;
     height: 36px;
-    border-radius: 6px;
+    border-radius: 0px;
     overflow: hidden;
     flex-shrink: 0;
     border: 1.5px solid rgba(255,255,255,0.12);
@@ -1954,3 +1980,65 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     gap: 3px;
 }
 
+
+/* Custom Scrollbar */
+.custom-scrollbar {
+    position: absolute;
+    top: 8px;
+    right: 6px;
+    width: 6px;
+    height: calc(100% - 16px);
+    pointer-events: none; /* Just visual */
+    background: transparent;
+    z-index: 100;
+}
+
+.custom-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 2px;
+    min-height: 20px;
+    background-color: rgba(255, 255, 255, 0.18);
+    border-radius: 0px;
+    transition: width 0.15s ease, background-color 0.15s ease;
+}
+
+.panel-scroll-container:hover .custom-scrollbar-thumb {
+    width: 6px;
+    background-color: rgba(255, 255, 255, 0.35);
+}
+
+/* Flat-edge pass: keep circular controls intact, flatten everything else. */
+:root {
+    --spectrum-alias-border-radius-regular: 0px;
+    --spectrum-textfield-m-border-radius: 0px;
+    --spectrum-dropdown-m-border-radius: 0px;
+    --spectrum-dropdown-border-radius: 0px;
+}
+
+#panel-root.auto-resize-root::-webkit-scrollbar-thumb,
+.layer-list-scroll::-webkit-scrollbar-thumb,
+.custom-scrollbar-thumb,
+.row-drop-divider.row-drop-active .row-divider-line,
+.side-drop-zone,
+.side-drop-zone.side-drop-active::after {
+    border-radius: 0px;
+}
+
+:root {
+  --spectrum-alias-border-radius-regular: 0px !important;
+  --spectrum-alias-border-radius-medium: 0px !important;
+  --spectrum-alias-border-radius-large: 0px !important;
+  --spectrum-textfield-border-radius: 0px !important;
+  --spectrum-textfield-m-border-radius: 0px !important;
+  --spectrum-dropdown-border-radius: 0px !important;
+  --spectrum-dropdown-m-border-radius: 0px !important;
+  --spectrum-button-border-radius: 0px !important;
+  --spectrum-button-m-border-radius: 0px !important;
+  --spectrum-button-primary-m-border-radius: 0px !important;
+  --spectrum-button-secondary-m-border-radius: 0px !important;
+  --spectrum-actionbutton-m-border-radius: 0px !important;
+  --spectrum-checkbox-box-border-radius: 0px !important;
+  --spectrum-checkbox-m-box-border-radius: 0px !important;
+}
