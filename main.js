@@ -8,6 +8,14 @@ const uxpFs = require("uxp").storage.localFileSystem;
 const PRESETS = {
   instagram: { w: 1080, h: 1080 },
   long: { w: 1080, h: 1350 },
+  hd: { w: 1920, h: 1080 },
+  hd720: { w: 1280, h: 720 },
+  standard: { w: 1024, h: 768 },
+  widescreen: { w: 1920, h: 1200 },
+  a4: { w: 2480, h: 3508 },
+  a3: { w: 3508, h: 4961 },
+  letter: { w: 2550, h: 3300 },
+  ledger: { w: 3300, h: 5100 },
 };
 const ARTBOARD_GAP = 140;
 
