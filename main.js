@@ -8,6 +8,7 @@ const uxpFs = require("uxp").storage.localFileSystem;
 const PRESETS = {
   instagram: { w: 1080, h: 1080 },
   long: { w: 1080, h: 1350 },
+  preset: { w: 1920, h: 1080 },
   hd: { w: 1920, h: 1080 },
   hd720: { w: 1280, h: 720 },
   standard: { w: 1024, h: 768 },
