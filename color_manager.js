@@ -379,17 +379,28 @@ function getLayerEffectEntries(descriptor) {
   const supportedEffects = [
     { key: "solidFill", path: "layerEffects.solidFill.color" },
     { key: "frameFX", path: "layerEffects.frameFX.color" },
+    { key: "dropShadow", path: "layerEffects.dropShadow.color" },
+    { key: "innerShadow", path: "layerEffects.innerShadow.color" },
+    { key: "innerGlow", path: "layerEffects.innerGlow.color" },
+    { key: "outerGlow", path: "layerEffects.outerGlow.color" },
+    { key: "chromeFX", path: "layerEffects.chromeFX.color" },
+    { key: "bevelEmboss", path: "layerEffects.bevelEmboss.highlightColor" },
+    { key: "bevelEmboss", path: "layerEffects.bevelEmboss.shadowColor" },
   ];
 
-  return supportedEffects
-    .map((effect) => {
-      const effectValue = layerEffects[effect.key];
-      const effectDescriptor = Array.isArray(effectValue) ? effectValue[0] : effectValue;
-      return effectDescriptor && effectDescriptor.color
-        ? { path: effect.path, color: effectDescriptor.color }
-        : null;
-    })
-    .filter(Boolean);
+  const entries = [];
+  supportedEffects.forEach((effect) => {
+    const effectValue = layerEffects[effect.key];
+    const effectDescriptor = Array.isArray(effectValue) ? effectValue[0] : effectValue;
+    if (!effectDescriptor) return;
+    const colorKey = effect.path.split(".").slice(-1)[0];
+    const colorValue = effectDescriptor[colorKey];
+    if (colorValue) {
+      entries.push({ path: effect.path, color: colorValue });
+    }
+  });
+
+  return entries;
 }
 
 function extractLayerEffects(layerEntry, descriptor) {
@@ -401,6 +412,41 @@ function extractLayerEffects(layerEntry, descriptor) {
       path: effectEntry.path,
     });
   });
+}
+
+function extractDescriptorColorCandidates(layerEntry, descriptor) {
+  const seenHex = new Set();
+  const stack = [{ value: descriptor, path: "descriptor", depth: 0 }];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || current.depth > 5) continue;
+    const { value, path, depth } = current;
+    if (!value || typeof value !== "object") continue;
+
+    const directHex = colorToHex(value);
+    if (directHex && !seenHex.has(directHex)) {
+      seenHex.add(directHex);
+      recordColor(value, {
+        id: layerEntry.id,
+        name: layerEntry.name,
+        kind: "detected",
+        path,
+      });
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((child, index) => {
+        stack.push({ value: child, path: `${path}[${index}]`, depth: depth + 1 });
+      });
+      continue;
+    }
+
+    Object.entries(value).forEach(([key, child]) => {
+      if (key === "_rawData" || key === "_message") return;
+      stack.push({ value: child, path: `${path}.${key}`, depth: depth + 1 });
+    });
+  }
 }
 
 function buildFoundColors() {
@@ -419,6 +465,7 @@ function collectColorDataFromDescriptor(layerEntry, descriptor) {
   extractSolidColorLayer(layerEntry, descriptor);
   extractShapeFill(layerEntry, descriptor);
   extractLayerEffects(layerEntry, descriptor);
+  extractDescriptorColorCandidates(layerEntry, descriptor);
 }
 
 function renderColorSwatches() {
@@ -655,6 +702,13 @@ function applySourceHexInput() {
   if (!normalized) return;
 
   setSelectedSource(normalized, { syncInput: true });
+}
+
+function useWheelColorAsSource() {
+  const targetRgb = hsbToRgb(colorManagerState.newH, colorManagerState.newS, colorManagerState.newB);
+  const sourceHex = rgbToHex(targetRgb.r, targetRgb.g, targetRgb.b);
+  setSelectedSource(sourceHex, { syncInput: true, keepTarget: true });
+  setStatus("Wheel color set as source color.", "success");
 }
 
 function initColorWheel() {
@@ -1132,6 +1186,9 @@ function initColorManager() {
 
   const applyButton = document.getElementById("btn-apply-color-replace");
   if (applyButton) applyButton.addEventListener("click", replaceColorGlobally);
+
+  const wheelSourceButton = document.getElementById("btn-use-wheel-source");
+  if (wheelSourceButton) wheelSourceButton.addEventListener("click", useWheelColorAsSource);
 
   initColorWheel();
   updateEditorLayerPills([]);

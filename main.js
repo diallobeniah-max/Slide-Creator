@@ -1,22 +1,65 @@
-const app = require("photoshop").app;
+﻿const app = require("photoshop").app;
 const core = require("photoshop").core;
 const action = require("photoshop").action;
 const constants = require("photoshop").constants;
+const uxpStorage = require("uxp").storage;
 const uxpFs = require("uxp").storage.localFileSystem;
+const uxpFormats = uxpStorage && uxpStorage.formats ? uxpStorage.formats : {};
 
-// ─── Presets ──────────────────────────────────────────────────────────────────
-const PRESETS = {
-  instagram: { w: 1080, h: 1080 },
-  long: { w: 1080, h: 1350 },
-  preset: { w: 1920, h: 1080 },
-  hd: { w: 1920, h: 1080 },
-  hd720: { w: 1280, h: 720 },
-  standard: { w: 1024, h: 768 },
-  widescreen: { w: 1920, h: 1200 },
-  a4: { w: 2480, h: 3508 },
-  a3: { w: 3508, h: 4961 },
-  letter: { w: 2550, h: 3300 },
-  ledger: { w: 3300, h: 5100 },
+// â”€â”€â”€ Presets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const BUILTIN_PRESETS = {
+  instagram: { group: "Social", icon: "social", name: "Instagram Post", label: "Instagram Post [W] 1080 x [H] 1080", w: 1080, h: 1080 },
+  long: { group: "Social", icon: "social", name: "Instagram Portrait", label: "Instagram Portrait [W] 1080 x [H] 1350", w: 1080, h: 1350 },
+  squareVideo: { group: "Social", icon: "social", name: "Square Video", label: "Square Video [W] 1080 x [H] 1080", w: 1080, h: 1080 },
+  shorts: { group: "YouTube", icon: "youtube", name: "Short Video", label: "Short Video [W] 1080 x [H] 1920", w: 1080, h: 1920 },
+  hd: { group: "YouTube", icon: "youtube", name: "YouTube Video HD", label: "YouTube Video HD [W] 1920 x [H] 1080", w: 1920, h: 1080 },
+  youtubeThumb: { group: "YouTube", icon: "youtube", name: "YouTube Thumbnail", label: "YouTube Thumbnail [W] 1280 x [H] 720", w: 1280, h: 720 },
+  youtubeBanner: { group: "YouTube", icon: "youtube", name: "YouTube Banner", label: "YouTube Banner [W] 2048 x [H] 1152", w: 2048, h: 1152 },
+  youtubeProfile: { group: "YouTube", icon: "youtube", name: "YouTube Profile Picture", label: "YouTube Profile Picture [W] 98 x [H] 98", w: 98, h: 98 },
+  googleDisplay: { group: "Google Ads", icon: "ads", name: "Medium Rectangle", label: "Medium Rectangle [W] 300 x [H] 250", w: 300, h: 250 },
+  googleLeaderboard: { group: "Google Ads", icon: "ads", name: "Leaderboard", label: "Leaderboard [W] 728 x [H] 90", w: 728, h: 90 },
+  googleHalfPage: { group: "Google Ads", icon: "ads", name: "Half Page", label: "Half Page [W] 300 x [H] 600", w: 300, h: 600 },
+  googleMobileBanner: { group: "Google Ads", icon: "ads", name: "Mobile Banner", label: "Mobile Banner [W] 320 x [H] 100", w: 320, h: 100 },
+  passport: { group: "Photo", icon: "photo", name: "Passport Photo", label: "Passport Photo [W] 600 x [H] 600", w: 600, h: 600 },
+  hd720: { group: "Presentation", icon: "slides", name: "Presentation 720p", label: "Presentation 720p [W] 1280 x [H] 720", w: 1280, h: 720 },
+  standard: { group: "Presentation", icon: "slides", name: "Standard 4:3", label: "Standard 4:3 [W] 1024 x [H] 768", w: 1024, h: 768 },
+  widescreen: { group: "Presentation", icon: "slides", name: "Widescreen", label: "Widescreen [W] 1920 x [H] 1200", w: 1920, h: 1200 },
+  a4: { group: "Print", icon: "print", name: "A4 Print", label: "A4 Print [W] 2480 x [H] 3508", w: 2480, h: 3508 },
+  a3: { group: "Print", icon: "print", name: "A3 Print", label: "A3 Print [W] 3508 x [H] 4961", w: 3508, h: 4961 },
+  letter: { group: "Print", icon: "print", name: "US Letter", label: "US Letter [W] 2550 x [H] 3300", w: 2550, h: 3300 },
+  ledger: { group: "Print", icon: "print", name: "US Ledger", label: "US Ledger [W] 3300 x [H] 5100", w: 3300, h: 5100 },
+};
+const CUSTOM_PRESET_STORAGE_KEY = "slide_creator_custom_size_presets_v1";
+const CUSTOM_PRESET_SENTINEL = "custom";
+const DEFAULT_SIZE_PRESET_ID = "instagram";
+const PRESET_GROUP_ORDER = ["Custom", "YouTube", "Social", "Google Ads", "Presentation", "Print", "Photo"];
+const PRESET_GROUP_SENTINEL_PREFIX = "__group__:";
+const PRESET_ICON_SVGS = {
+  youtube: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 15l5-3-5-3v6Z"/><path d="M21.6 7.2a3 3 0 0 0-2.1-2.1C17.8 4.7 12 4.7 12 4.7s-5.8 0-7.5.4A3 3 0 0 0 2.4 7.2 31 31 0 0 0 2 12a31 31 0 0 0 .4 4.8 3 3 0 0 0 2.1 2.1c1.7.4 7.5.4 7.5.4s5.8 0 7.5-.4a3 3 0 0 0 2.1-2.1A31 31 0 0 0 22 12a31 31 0 0 0-.4-4.8Z" fill="currentColor" opacity="0.14"/><path d="M21.6 7.2a3 3 0 0 0-2.1-2.1C17.8 4.7 12 4.7 12 4.7s-5.8 0-7.5.4A3 3 0 0 0 2.4 7.2 31 31 0 0 0 2 12a31 31 0 0 0 .4 4.8 3 3 0 0 0 2.1 2.1c1.7.4 7.5.4 7.5.4s5.8 0 7.5-.4a3 3 0 0 0 2.1-2.1A31 31 0 0 0 22 12a31 31 0 0 0-.4-4.8Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  ads: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v10H4z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 10h5M7 13h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M18 7V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  slides: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 19h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 9h6M9 12h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  print: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 17h10v3H7z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 8h12a3 3 0 0 1 3 3v5h-4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 16H2v-5a3 3 0 0 1 3-3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  photo: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 5l2-2h6l2 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  social: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 8a3 3 0 1 0-2.9-3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 14a3 3 0 1 0 2.9 3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 10l-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 8a3 3 0 1 0 0 6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  custom: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
+};
+const SIZE_CONTEXTS = {
+  artboard: {
+    dropdownId: "artboard-preset",
+    inlineId: "artboard-preset-inline",
+    customWrapId: "artboard-custom-fields",
+    widthId: "artboard-custom-w",
+    heightId: "artboard-custom-h",
+    title: "Artboard",
+  },
+  slide: {
+    dropdownId: "slide-size-preset",
+    inlineId: "slide-size-preset-inline",
+    customWrapId: "slide-custom-fields",
+    widthId: "slide-custom-w",
+    heightId: "slide-custom-h",
+    title: "Slide",
+  },
 };
 const ARTBOARD_GAP = 140;
 
@@ -25,8 +68,1151 @@ let originalDocId = null;
 let selectedSlideId = null;
 let draggedSlideId = null;
 let statusHideTimer = null;
+let customPresets = {};
+let presetManagerContext = "artboard";
+let presetManagerEditingId = null;
 
-// ─── UI helpers ───────────────────────────────────────────────────────────────
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sanitizePresetDimension(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function slugifyPresetName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 36);
+}
+
+function getAllPresets() {
+  return { ...BUILTIN_PRESETS, ...customPresets };
+}
+
+function getPresetDefinition(id) {
+  return getAllPresets()[id] || null;
+}
+
+function getPresetLabel(preset) {
+  if (!preset) return "";
+  return preset.label || `${preset.name || "Preset"} [W] ${preset.w} x [H] ${preset.h}`;
+}
+
+function getPresetIconMarkup(iconKey) {
+  const svg = PRESET_ICON_SVGS[iconKey] || PRESET_ICON_SVGS.custom;
+  return `<span class="preset-menu-icon" aria-hidden="true">${svg}</span>`;
+}
+
+function buildPresetMenuItemMarkup(id, preset) {
+  const iconKey = (preset && preset.custom) ? "custom" : (preset && preset.icon ? preset.icon : "custom");
+  const label = getPresetLabel(preset);
+  return `<sp-menu-item class="preset-menu-item" value="${escapeHtml(id)}">${getPresetIconMarkup(iconKey)}<span class="preset-menu-label">${escapeHtml(label)}</span></sp-menu-item>`;
+}
+
+function buildPresetGroupHeaderMarkup(groupName) {
+  const headerValue = `${PRESET_GROUP_SENTINEL_PREFIX}${String(groupName || "").toLowerCase().replace(/\s+/g, "-")}`;
+  return `<sp-menu-item class="preset-group-header" value="${escapeHtml(headerValue)}" disabled>${escapeHtml(groupName)}</sp-menu-item>`;
+}
+
+function createCustomPresetRecord(id, name, w, h) {
+  const cleanName = String(name || "").trim();
+  return {
+    id,
+    name: cleanName,
+    label: `${cleanName} [W] ${w} x [H] ${h}`,
+    w,
+    h,
+    custom: true,
+  };
+}
+
+function makeCustomPresetId(name, existingId = null) {
+  if (existingId) return existingId;
+  const base = slugifyPresetName(name) || "my-size";
+  let candidate = `user-${base}`;
+  let index = 2;
+  while (BUILTIN_PRESETS[candidate] || customPresets[candidate]) {
+    candidate = `user-${base}-${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function loadCustomPresets() {
+  customPresets = {};
+  try {
+    const raw = localStorage.getItem(CUSTOM_PRESET_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    const entries = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    entries.forEach((entry) => {
+      const name = String(entry && entry.name ? entry.name : "").trim();
+      const w = sanitizePresetDimension(entry && entry.w);
+      const h = sanitizePresetDimension(entry && entry.h);
+      if (!name || !w || !h) return;
+      const id = String(entry && entry.id ? entry.id : makeCustomPresetId(name));
+      if (BUILTIN_PRESETS[id]) return;
+      customPresets[id] = createCustomPresetRecord(id, name, w, h);
+    });
+  } catch (_) { }
+}
+
+function persistCustomPresets() {
+  try {
+    localStorage.setItem(CUSTOM_PRESET_STORAGE_KEY, JSON.stringify(Object.values(customPresets)));
+  } catch (_) { }
+}
+
+function getOrderedPresetEntries() {
+  const builtIns = Object.entries(BUILTIN_PRESETS);
+  const customs = Object.values(customPresets)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((preset) => [preset.id, preset]);
+  return [...builtIns, ...customs];
+}
+
+function buildPresetOptionMarkup() {
+  const groups = new Map();
+  Object.entries(BUILTIN_PRESETS).forEach(([id, preset]) => {
+    const groupName = preset && preset.group ? preset.group : "Other";
+    if (!groups.has(groupName)) groups.set(groupName, []);
+    groups.get(groupName).push([id, preset]);
+  });
+  Object.values(customPresets).forEach((preset) => {
+    const groupName = "Custom";
+    if (!groups.has(groupName)) groups.set(groupName, []);
+    groups.get(groupName).push([preset.id, preset]);
+  });
+
+  const orderedGroupNames = PRESET_GROUP_ORDER.filter((g) => groups.has(g));
+  const remainingGroupNames = Array.from(groups.keys()).filter((g) => !orderedGroupNames.includes(g)).sort();
+  const groupNames = [...orderedGroupNames, ...remainingGroupNames];
+
+  const chunks = [];
+  groupNames.forEach((groupName) => {
+    chunks.push(buildPresetGroupHeaderMarkup(groupName));
+    const items = (groups.get(groupName) || []).slice().sort((a, b) => {
+      const aLabel = getPresetLabel(a[1]);
+      const bLabel = getPresetLabel(b[1]);
+      return aLabel.localeCompare(bLabel);
+    });
+    items.forEach(([id, preset]) => chunks.push(buildPresetMenuItemMarkup(id, preset)));
+    if (groupName === "Custom") {
+      chunks.push(`<sp-menu-item class="preset-menu-item preset-menu-item-custom" value="${CUSTOM_PRESET_SENTINEL}">${getPresetIconMarkup("custom")}<span class="preset-menu-label">Custom...</span></sp-menu-item>`);
+    }
+  });
+
+  if (!groups.has("Custom")) {
+    chunks.push(buildPresetGroupHeaderMarkup("Custom"));
+    chunks.push(`<sp-menu-item class="preset-menu-item preset-menu-item-custom" value="${CUSTOM_PRESET_SENTINEL}">${getPresetIconMarkup("custom")}<span class="preset-menu-label">Custom...</span></sp-menu-item>`);
+  }
+
+  return chunks.join("");
+}
+
+function getCurrentPresetSelections() {
+  return Object.fromEntries(
+    Object.entries(SIZE_CONTEXTS).map(([contextName, config]) => [contextName, getVal(config.dropdownId) || DEFAULT_SIZE_PRESET_ID])
+  );
+}
+
+function refreshSizePresetDropdowns(preferredSelections = null) {
+  const selections = preferredSelections || getCurrentPresetSelections();
+  Object.entries(SIZE_CONTEXTS).forEach(([contextName, config]) => {
+    const dropdown = document.getElementById(config.dropdownId);
+    const menu = dropdown && dropdown.querySelector("sp-menu");
+    if (!dropdown || !menu) return;
+    const current = selections[contextName] || dropdown.value || DEFAULT_SIZE_PRESET_ID;
+    menu.innerHTML = buildPresetOptionMarkup();
+    const nextValue = current === CUSTOM_PRESET_SENTINEL || getPresetDefinition(current)
+      ? current
+      : DEFAULT_SIZE_PRESET_ID;
+    syncDropdownSelection(config.dropdownId, config.inlineId, nextValue);
+    const customWrap = document.getElementById(config.customWrapId);
+    if (customWrap) customWrap.classList.toggle("hidden", nextValue !== CUSTOM_PRESET_SENTINEL);
+  });
+}
+
+function getContextDimensions(contextName) {
+  const config = SIZE_CONTEXTS[contextName] || SIZE_CONTEXTS.artboard;
+  const selectedId = getVal(config.dropdownId);
+  const preset = getPresetDefinition(selectedId);
+  if (preset) {
+    return { presetId: selectedId, name: preset.name, w: preset.w, h: preset.h };
+  }
+  return {
+    presetId: CUSTOM_PRESET_SENTINEL,
+    name: "",
+    w: sanitizePresetDimension(getVal(config.widthId)) || 1080,
+    h: sanitizePresetDimension(getVal(config.heightId)) || 1080,
+  };
+}
+
+function applyPresetToContext(contextName, presetId) {
+  const config = SIZE_CONTEXTS[contextName] || SIZE_CONTEXTS.artboard;
+  syncDropdownSelection(config.dropdownId, config.inlineId, presetId);
+  const customWrap = document.getElementById(config.customWrapId);
+  if (customWrap) customWrap.classList.toggle("hidden", presetId !== CUSTOM_PRESET_SENTINEL);
+  if (contextName === "artboard") updateArtboardHint();
+}
+
+function setPresetManagerFormValues({ name = "", w = "", h = "" } = {}) {
+  const nameInput = document.getElementById("preset-manager-name");
+  const widthInput = document.getElementById("preset-manager-width");
+  const heightInput = document.getElementById("preset-manager-height");
+  const saveBtn = document.getElementById("preset-manager-save-btn");
+  
+  if (nameInput) nameInput.value = name;
+  if (widthInput) widthInput.value = w ? String(w) : "";
+  if (heightInput) heightInput.value = h ? String(h) : "";
+  
+  if (saveBtn) {
+    saveBtn.textContent = presetManagerEditingId ? "Update Size" : "Save Size";
+  }
+}
+
+function updatePresetManagerContextText() {
+  const contextEl = document.getElementById("preset-manager-context");
+  if (!contextEl) return;
+  const context = SIZE_CONTEXTS[presetManagerContext] || SIZE_CONTEXTS.artboard;
+  contextEl.textContent = `${context.title} preset editor. Saved sizes show in both Artboard and Slide lists.`;
+}
+
+function renderPresetManagerList() {
+  const list = document.getElementById("preset-manager-list");
+  if (!list) return;
+  const customList = Object.values(customPresets).sort((a, b) => a.name.localeCompare(b.name));
+  if (!customList.length) {
+    list.innerHTML = `<div class="preset-manager-empty">No personal saved sizes yet.</div>`;
+    return;
+  }
+
+  list.innerHTML = customList.map((preset) => `
+    <div class="preset-manager-item" data-preset-id="${escapeHtml(preset.id)}">
+      <div class="preset-manager-item-main">
+        <div class="preset-manager-item-name">${escapeHtml(preset.name)}</div>
+        <div class="preset-manager-item-size">${preset.w} Ã— ${preset.h} px</div>
+      </div>
+      <div class="preset-manager-item-actions">
+        <button type="button" data-preset-action="use" data-preset-id="${escapeHtml(preset.id)}" title="Apply this size">Use</button>
+        <button type="button" data-preset-action="edit" data-preset-id="${escapeHtml(preset.id)}" title="Edit name or dimensions">Edit</button>
+        <button type="button" class="danger" data-preset-action="delete" data-preset-id="${escapeHtml(preset.id)}" title="Remove permanently">Delete</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function resetPresetManagerForm(fromContext = true) {
+  presetManagerEditingId = null;
+  if (!fromContext) {
+    setPresetManagerFormValues();
+    return;
+  }
+  const dims = getContextDimensions(presetManagerContext);
+  const preset = dims.presetId && customPresets[dims.presetId] ? customPresets[dims.presetId] : null;
+  setPresetManagerFormValues({
+    name: preset ? preset.name : "",
+    w: dims.w,
+    h: dims.h,
+  });
+}
+
+function openPresetManager(contextName) {
+  const modal = document.getElementById("preset-manager-modal");
+  if (!modal) return;
+  const activeEl = document.activeElement;
+  if (activeEl && typeof activeEl.blur === "function") activeEl.blur();
+  document.querySelectorAll("sp-dropdown[open]").forEach((el) => el.removeAttribute("open"));
+  presetManagerContext = contextName in SIZE_CONTEXTS ? contextName : "artboard";
+  updatePresetManagerContextText();
+  renderPresetManagerList();
+  resetPresetManagerForm(false);
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("preset-modal-open");
+}
+
+function closePresetManager() {
+  const modal = document.getElementById("preset-manager-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("preset-modal-open");
+}
+
+const PRESET_MANAGER_ACTIVATION_GUARD_MS = 350;
+const presetManagerActivationTimes = new WeakMap();
+
+function shouldIgnorePresetManagerActivation(button) {
+  const now = Date.now();
+  const last = presetManagerActivationTimes.get(button) || 0;
+  if (now - last < PRESET_MANAGER_ACTIVATION_GUARD_MS) return true;
+  presetManagerActivationTimes.set(button, now);
+  return false;
+}
+
+function openPresetManagerFromButton(button) {
+  if (!button || !button.id) return;
+  if (button.id === "btn-edit-slide-presets") {
+    openPresetManager("slide");
+  } else {
+    openPresetManager("artboard");
+  }
+}
+
+function handlePresetManagerPointerDown(event) {
+  const button = event.currentTarget;
+  if (!button || event.pointerType === "mouse") return;
+  event.preventDefault();
+  if (shouldIgnorePresetManagerActivation(button)) return;
+  openPresetManagerFromButton(button);
+}
+
+function handlePresetManagerClick(event) {
+  const button = event.currentTarget;
+  if (!button || shouldIgnorePresetManagerActivation(button)) return;
+  openPresetManagerFromButton(button);
+}
+
+function handlePresetManagerKeydown(event) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  const button = event.currentTarget;
+  if (!button || shouldIgnorePresetManagerActivation(button)) return;
+  openPresetManagerFromButton(button);
+}
+
+function deleteCustomPreset(presetId) {
+  const preset = customPresets[presetId];
+  if (!preset) return;
+  delete customPresets[presetId];
+  persistCustomPresets();
+
+  const selections = getCurrentPresetSelections();
+  Object.entries(SIZE_CONTEXTS).forEach(([contextName, config]) => {
+    if (selections[contextName] !== presetId) return;
+    setFieldValue(config.widthId, String(preset.w));
+    setFieldValue(config.heightId, String(preset.h));
+    selections[contextName] = CUSTOM_PRESET_SENTINEL;
+  });
+
+  refreshSizePresetDropdowns(selections);
+  renderPresetManagerList();
+  resetPresetManagerForm(true);
+  setStatus(`Removed saved size "${preset.name}".`, "success");
+}
+
+function savePresetFromManager() {
+  const nameInput = document.getElementById("preset-manager-name");
+  const widthInput = document.getElementById("preset-manager-width");
+  const heightInput = document.getElementById("preset-manager-height");
+  const name = String(nameInput && nameInput.value ? nameInput.value : "").trim();
+  const w = sanitizePresetDimension(widthInput && widthInput.value);
+  const h = sanitizePresetDimension(heightInput && heightInput.value);
+
+  if (!name || !w || !h) {
+    showError("Save size failed", new Error("Enter a name, width, and height greater than zero."));
+    return;
+  }
+
+  const presetId = makeCustomPresetId(name, presetManagerEditingId);
+  const preset = createCustomPresetRecord(presetId, name, w, h);
+  customPresets[presetId] = preset;
+  persistCustomPresets();
+  refreshSizePresetDropdowns({
+    ...getCurrentPresetSelections(),
+    [presetManagerContext]: presetId,
+  });
+  applyPresetToContext(presetManagerContext, presetId);
+  renderPresetManagerList();
+  closePresetManager();
+  setStatus(`Saved "${preset.name}" to your preset sizes.`, "success");
+}
+
+
+function initializePresetManager() {
+  loadCustomPresets();
+  refreshSizePresetDropdowns();
+
+  const artboardButton = document.getElementById("btn-edit-artboard-presets");
+  const slideButton = document.getElementById("btn-edit-slide-presets");
+  const closeButton = document.getElementById("preset-manager-close");
+  const saveButton = document.getElementById("preset-manager-save-btn");
+  const cancelButton = document.getElementById("preset-manager-cancel-btn");
+  const modal = document.getElementById("preset-manager-modal");
+  const list = document.getElementById("preset-manager-list");
+
+  if (artboardButton) {
+    artboardButton.addEventListener("pointerdown", handlePresetManagerPointerDown);
+    artboardButton.addEventListener("click", handlePresetManagerClick);
+    artboardButton.addEventListener("keydown", handlePresetManagerKeydown);
+  }
+  if (slideButton) {
+    slideButton.addEventListener("pointerdown", handlePresetManagerPointerDown);
+    slideButton.addEventListener("click", handlePresetManagerClick);
+    slideButton.addEventListener("keydown", handlePresetManagerKeydown);
+  }
+  if (closeButton) closeButton.addEventListener("click", closePresetManager);
+  if (saveButton) saveButton.addEventListener("click", savePresetFromManager);
+  if (cancelButton) cancelButton.addEventListener("click", () => resetPresetManagerForm(false));
+  if (modal) {
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closePresetManager();
+    });
+  }
+  if (list) {
+    list.addEventListener("click", (event) => {
+      const button = event.target && typeof event.target.closest === "function"
+        ? event.target.closest("[data-preset-action]")
+        : null;
+      if (!button) return;
+      const presetId = button.getAttribute("data-preset-id") || "";
+      const actionName = button.getAttribute("data-preset-action");
+      const preset = customPresets[presetId];
+      if (!preset) return;
+
+      if (actionName === "use") {
+        applyPresetToContext(presetManagerContext, presetId);
+        closePresetManager();
+        return;
+      }
+
+      if (actionName === "edit") {
+        presetManagerEditingId = presetId;
+        setPresetManagerFormValues({ name: preset.name, w: preset.w, h: preset.h });
+        return;
+      }
+      
+      if (actionName === "delete") {
+        delete customPresets[presetId];
+        persistCustomPresets();
+        refreshSizePresetDropdowns();
+        renderPresetManagerList();
+        setStatus(`Deleted "${preset.name}".`, "info");
+        return;
+      }
+
+
+    });
+  }
+}
+
+const LIBRARY_FOLDER_NAME = "slide_creator_library_assets";
+const LIBRARY_META_FILE_NAME = "assets.json";
+const LIBRARY_DEFAULT_THUMB =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" fill="#252a33"/><path d="M7 35l10-12 8 9 6-7 10 10H7z" fill="#62d6cf"/><circle cx="17" cy="16" r="4" fill="#8ee6df"/><rect x="1.5" y="1.5" width="45" height="45" fill="none" stroke="#5e6675"/></svg>`
+  );
+const LIBRARY_IMAGE_PREVIEW_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "bmp",
+  "tif",
+  "tiff",
+  "svg",
+  "avif",
+  "heic",
+  "heif",
+  "jp2",
+  "j2k",
+]);
+let libraryFolderEntry = null;
+let libraryMetaEntry = null;
+let libraryAssets = [];
+let selectedLibraryAssetIds = [];
+
+function getSelectedLibraryAssetId() {
+  return selectedLibraryAssetIds[0] || null;
+}
+
+function getSelectedLibraryAssets() {
+  return selectedLibraryAssetIds
+    .map((assetId) => libraryAssets.find((asset) => asset.id === assetId))
+    .filter(Boolean);
+}
+
+function sanitizeAssetName(name) {
+  const clean = String(name || "").trim().replace(/\s+/g, " ");
+  return clean ? clean.slice(0, 80) : "";
+}
+
+function sanitizeAssetFileStem(stem) {
+  const clean = String(stem || "")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return clean || "asset";
+}
+
+function getFileExtension(fileName) {
+  const dotIndex = String(fileName || "").lastIndexOf(".");
+  if (dotIndex < 0) return "";
+  return String(fileName).slice(dotIndex + 1).toLowerCase();
+}
+
+function isLibraryPreviewableFile(fileName) {
+  return LIBRARY_IMAGE_PREVIEW_EXTENSIONS.has(getFileExtension(fileName));
+}
+
+function hashLibraryLabel(value) {
+  let hash = 0;
+  const text = String(value || "asset");
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function buildLibraryFallbackPreview(fileName, assetName) {
+  const labelSource = String(assetName || fileName || "FILE").trim();
+  const ext = String(getFileExtension(fileName) || "").toUpperCase();
+  const badge = ext ? ext.slice(0, 4) : labelSource.replace(/\s+/g, "").slice(0, 4).toUpperCase() || "FILE";
+  const hash = hashLibraryLabel(fileName || assetName || badge);
+  const hue = hash % 360;
+  const bg = `hsl(${(hue + 204) % 360} 28% 14%)`;
+  const fg = `hsl(${hue} 82% 72%)`;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${bg}"/>
+          <stop offset="100%" stop-color="hsl(${(hue + 150) % 360} 34% 20%)"/>
+        </linearGradient>
+      </defs>
+      <rect width="160" height="160" rx="18" fill="url(#g)"/>
+      <rect x="18" y="18" width="124" height="124" rx="14" fill="none" stroke="${fg}" stroke-width="3" stroke-dasharray="7 6" opacity="0.85"/>
+      <path d="M46 60h68M46 81h52M46 102h40" fill="none" stroke="${fg}" stroke-width="8" stroke-linecap="round" opacity="0.9"/>
+      <text x="80" y="136" text-anchor="middle" font-size="24" font-family="Arial, sans-serif" font-weight="700" fill="${fg}">${badge}</text>
+    </svg>
+  `;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+function buildLibraryPreviewURI(fileName, assetName, nativePath = "") {
+  if (nativePath && isLibraryPreviewableFile(fileName)) {
+    return String(nativePath).replace(/\\/g, "/");
+  }
+  return buildLibraryFallbackPreview(fileName, assetName);
+}
+
+function formatAssetDate(isoString) {
+  const value = new Date(isoString);
+  if (!Number.isFinite(value.getTime())) return "";
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getAssetPreviewPath(asset) {
+  if (!asset) return LIBRARY_DEFAULT_THUMB;
+  if (asset.previewURI) return asset.previewURI;
+  return LIBRARY_DEFAULT_THUMB;
+}
+
+function updateLibrarySelectedSummary(asset) {
+  const summary = document.getElementById("library-selected-summary");
+  const previewStack = document.getElementById("library-selected-preview-stack");
+  const name = document.getElementById("library-selected-name");
+  const sub = document.getElementById("library-selected-sub");
+  const selectedAssets = getSelectedLibraryAssets();
+  const firstAsset = selectedAssets[0] || asset || null;
+  const multi = selectedAssets.length > 1;
+
+  if (summary) {
+    summary.classList.toggle("is-multi", multi);
+  }
+
+  if (previewStack) {
+    const previews = multi ? selectedAssets.slice(0, 4) : firstAsset ? [firstAsset] : [];
+    previewStack.classList.toggle("multi", multi);
+    previewStack.innerHTML = previews.length
+      ? previews.map((item) => `<img class="library-selected-preview" src="${escapeHtml(getAssetPreviewPath(item))}" alt="${escapeHtml(item.name)} preview">`).join("")
+      : `<img class="library-selected-preview" src="${LIBRARY_DEFAULT_THUMB}" alt="Selected asset preview">`;
+  }
+
+  if (name) {
+    if (!selectedAssets.length) name.textContent = "No asset selected";
+    else if (multi) name.textContent = `${selectedAssets.length} assets selected`;
+    else name.textContent = firstAsset ? firstAsset.name : "No asset selected";
+  }
+
+  if (sub) {
+    if (!selectedAssets.length) {
+      sub.textContent = "Tap an asset to apply it to the current project, or add a new file above.";
+    } else if (multi) {
+      sub.textContent = "Orange highlight means a multi-selection. Use Apply to add them all, or click one asset to work on a single item.";
+    } else {
+      const created = formatAssetDate(firstAsset.createdAt);
+      sub.textContent = `${firstAsset.originalFileName || firstAsset.fileName}${created ? ` · ${created}` : ""}`;
+    }
+  }
+}
+
+async function ensureLibraryStorage() {
+  if (libraryFolderEntry && libraryMetaEntry) return;
+
+  const dataFolder = await uxpFs.getDataFolder();
+  if (!dataFolder) throw new Error("Unable to access plugin data folder.");
+
+  try {
+    libraryFolderEntry = await dataFolder.createEntry(LIBRARY_FOLDER_NAME, { type: "folder" });
+  } catch (_) {
+    libraryFolderEntry = await dataFolder.getEntry(LIBRARY_FOLDER_NAME);
+  }
+
+  try {
+    libraryMetaEntry = await libraryFolderEntry.getEntry(LIBRARY_META_FILE_NAME);
+  } catch (_) {
+    libraryMetaEntry = await libraryFolderEntry.createFile(LIBRARY_META_FILE_NAME, { overwrite: true });
+    await libraryMetaEntry.write("[]");
+  }
+}
+
+async function writeLibraryMetadata() {
+  await ensureLibraryStorage();
+  const sanitized = libraryAssets.map((asset) => ({
+    id: asset.id,
+    name: sanitizeAssetName(asset.name),
+    fileName: asset.fileName,
+    originalFileName: asset.originalFileName || asset.fileName,
+    createdAt: asset.createdAt || new Date().toISOString(),
+    updatedAt: asset.updatedAt || new Date().toISOString(),
+  }));
+  await libraryMetaEntry.write(JSON.stringify(sanitized, null, 2));
+}
+
+function isLibraryAssetValid(asset) {
+  return !!(
+    asset &&
+    typeof asset.id === "string" &&
+    typeof asset.name === "string" &&
+    typeof asset.fileName === "string"
+  );
+}
+
+async function loadLibraryMetadata() {
+  await ensureLibraryStorage();
+  let parsed = [];
+  try {
+    const raw = await libraryMetaEntry.read();
+    parsed = JSON.parse(raw || "[]");
+  } catch (_) {
+    parsed = [];
+  }
+
+  libraryAssets = parsed
+    .filter(isLibraryAssetValid)
+    .map((asset) => ({
+      ...asset,
+      name: sanitizeAssetName(asset.name) || "Untitled Asset",
+      updatedAt: asset.updatedAt || asset.createdAt || new Date().toISOString(),
+      createdAt: asset.createdAt || new Date().toISOString(),
+      previewURI: "",
+    }))
+    .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
+}
+
+async function hydrateLibraryPreviewURIs() {
+  if (!libraryFolderEntry) return;
+
+  for (const asset of libraryAssets) {
+    try {
+      const fileEntry = await libraryFolderEntry.getEntry(asset.fileName);
+      asset.previewURI = buildLibraryPreviewURI(asset.fileName, asset.name, fileEntry && fileEntry.nativePath ? fileEntry.nativePath : "");
+    } catch (_) {
+      asset.previewURI = buildLibraryPreviewURI(asset.fileName, asset.name, "");
+    }
+  }
+}
+
+function getLibrarySearchValue() {
+  const input = document.getElementById("library-search-input");
+  return String((input && input.value) || "").trim().toLowerCase();
+}
+
+function getFilteredLibraryAssets() {
+  const search = getLibrarySearchValue();
+  if (!search) return libraryAssets.slice();
+  return libraryAssets.filter((asset) => {
+    const haystack = `${asset.name} ${asset.originalFileName || ""}`.toLowerCase();
+    return haystack.includes(search);
+  });
+}
+
+function selectLibraryAsset(assetId, additive = false) {
+  const id = String(assetId || "").trim();
+  if (!id) return;
+
+  if (additive) {
+    if (selectedLibraryAssetIds.includes(id)) {
+      selectedLibraryAssetIds = selectedLibraryAssetIds.filter((existingId) => existingId !== id);
+    } else {
+      selectedLibraryAssetIds = [...selectedLibraryAssetIds, id];
+    }
+  } else {
+    selectedLibraryAssetIds = [id];
+  }
+
+  const selectedAsset = libraryAssets.find((asset) => asset.id === getSelectedLibraryAssetId()) || null;
+  const nameField = document.getElementById("library-asset-name");
+  if (nameField) {
+    nameField.value = selectedAsset ? selectedAsset.name : "";
+    if (selectedAsset) nameField.setAttribute("value", selectedAsset.name);
+  }
+  updateLibrarySelectedSummary(selectedAsset);
+  renderLibraryAssets();
+}
+
+function renderLibraryAssets() {
+  const list = document.getElementById("library-assets-list");
+  if (!list) return;
+
+  const assets = getFilteredLibraryAssets();
+  if (!assets.length) {
+    if (libraryAssets.length === 0) {
+      list.innerHTML = '<span class="no-layers-msg">No assets saved yet. Add files, save selection, or paste clipboard.</span>';
+    } else {
+      list.innerHTML = '<span class="no-layers-msg">No matching assets found.</span>';
+    }
+    return;
+  }
+
+  const selectedIds = new Set(selectedLibraryAssetIds);
+  const rows = assets.map((asset) => {
+    const isSelected = selectedIds.has(asset.id) ? " selected" : "";
+    const isMultiSelected = selectedIds.size > 1 && selectedIds.has(asset.id) ? " multi-selected" : "";
+    const created = formatAssetDate(asset.createdAt);
+    const ext = getFileExtension(asset.fileName).toUpperCase() || "FILE";
+    return `
+      <div class="library-asset-row${isSelected}${isMultiSelected}" data-library-asset-id="${escapeHtml(asset.id)}" aria-selected="${selectedIds.has(asset.id) ? "true" : "false"}">
+        <img class="library-asset-thumb" src="${escapeHtml(getAssetPreviewPath(asset))}" alt="${escapeHtml(asset.name)}" />
+        <div class="library-asset-meta">
+          <span class="library-asset-name">${escapeHtml(asset.name)}</span>
+          <span class="library-asset-sub">${escapeHtml(asset.originalFileName || asset.fileName)}${created ? " · " + escapeHtml(created) : ""}</span>
+        </div>
+        <div class="library-asset-row-actions">
+          <span class="library-asset-badge">${escapeHtml(ext)}</span>
+          <button type="button" class="library-row-btn" data-library-action="place" data-library-asset-id="${escapeHtml(asset.id)}" aria-selected="${selectedIds.has(asset.id) ? "true" : "false"}">Apply</button>
+          <button type="button" class="library-row-btn" data-library-action="rename" data-library-asset-id="${escapeHtml(asset.id)}" aria-selected="${selectedIds.has(asset.id) ? "true" : "false"}">Rename</button>
+          <button type="button" class="library-row-btn danger" data-library-action="delete" data-library-asset-id="${escapeHtml(asset.id)}" aria-selected="${selectedIds.has(asset.id) ? "true" : "false"}">Delete</button>
+        </div>
+      </div>
+    `;
+  });
+  list.innerHTML = rows.join("");
+  updateLibrarySelectedSummary(libraryAssets.find((asset) => asset.id === getSelectedLibraryAssetId()) || null);
+}
+
+async function refreshLibraryView() {
+  await loadLibraryMetadata();
+  await reconcileLibraryMetadataWithFolder();
+  await hydrateLibraryPreviewURIs();
+  if (selectedLibraryAssetIds.length && !selectedLibraryAssetIds.some((assetId) => libraryAssets.some((asset) => asset.id === assetId))) {
+    selectedLibraryAssetIds = [];
+  }
+  renderLibraryAssets();
+}
+
+async function reconcileLibraryMetadataWithFolder() {
+  if (!libraryFolderEntry) return;
+  let changed = false;
+  let entries = [];
+  try {
+    entries = await libraryFolderEntry.getEntries();
+  } catch (_) {
+    entries = [];
+  }
+  const knownFileNames = new Set(libraryAssets.map((asset) => asset.fileName));
+
+  entries.forEach((entry) => {
+    if (!entry || entry.isFolder) return;
+    const fileName = entry.name || "";
+    if (!fileName || fileName === LIBRARY_META_FILE_NAME) return;
+    if (knownFileNames.has(fileName)) return;
+    const baseName = sanitizeAssetName(fileName.replace(/\.[^/.]+$/, "")) || "Recovered Asset";
+    libraryAssets.unshift({
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name: baseName,
+      fileName,
+      originalFileName: fileName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      previewURI: buildLibraryPreviewURI(fileName, baseName, entry.nativePath || ""),
+    });
+    changed = true;
+  });
+
+  if (changed) {
+    await writeLibraryMetadata();
+  }
+}
+
+async function getUniqueLibraryFileName(baseName, extension) {
+  const stem = sanitizeAssetFileStem(baseName);
+  const ext = String(extension || "").replace(/^\./, "").toLowerCase() || "bin";
+  let counter = 0;
+  while (counter < 2000) {
+    const suffix = counter === 0 ? "" : `_${counter + 1}`;
+    const candidate = `${stem}${suffix}.${ext}`;
+    try {
+      await libraryFolderEntry.getEntry(candidate);
+      counter += 1;
+    } catch (_) {
+      return candidate;
+    }
+  }
+  return `${stem}_${Date.now()}.${ext}`;
+}
+
+function getFilesFromPickerResult(result) {
+  if (!result) return [];
+  return Array.isArray(result) ? result : [result];
+}
+
+async function addFilesToLibrary() {
+  await ensureLibraryStorage();
+  const picked = await uxpFs.getFileForOpening({ allowMultiple: true });
+  const files = getFilesFromPickerResult(picked);
+  if (!files.length) {
+    setStatus("No files selected.", "");
+    return;
+  }
+
+  const typedName = sanitizeAssetName(getVal("library-asset-name"));
+  let importedCount = 0;
+  const failedImports = [];
+
+  for (let index = 0; index < files.length; index += 1) {
+    const fileEntry = files[index];
+    const originalName = fileEntry && fileEntry.name ? fileEntry.name : `Asset_${Date.now()}`;
+    const extension = getFileExtension(originalName);
+
+    const baseName = sanitizeAssetName(originalName.replace(/\.[^/.]+$/, "")) || "Asset";
+    const finalName = files.length === 1 && typedName ? typedName : baseName;
+    const storedFileName = await getUniqueLibraryFileName(finalName, extension);
+
+    try {
+      const binary = await fileEntry.read({ format: uxpFormats.binary });
+      const storedFile = await libraryFolderEntry.createFile(storedFileName, { overwrite: true });
+      await storedFile.write(binary, { format: uxpFormats.binary });
+
+      libraryAssets.unshift({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        name: finalName,
+        fileName: storedFileName,
+        originalFileName: originalName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        previewURI: buildLibraryPreviewURI(storedFileName, finalName, storedFile.nativePath || ""),
+      });
+      importedCount += 1;
+    } catch (error) {
+      failedImports.push(originalName);
+      console.warn("Library import failed for", originalName, error);
+    }
+  }
+
+  if (!importedCount) {
+    if (failedImports.length) {
+      const firstThreeFailed = failedImports.slice(0, 3).join(", ");
+      const moreFailed = failedImports.length > 3 ? ` (+${failedImports.length - 3} more)` : "";
+      setStatus(`Import failed for: ${firstThreeFailed}${moreFailed}`, "error");
+    } else {
+      setStatus("No supported files imported.", "error");
+    }
+    return;
+  }
+
+  await writeLibraryMetadata();
+  selectedLibraryAssetIds = libraryAssets[0] ? [libraryAssets[0].id] : [];
+  renderLibraryAssets();
+  if (failedImports.length) {
+    setStatus(
+      `Added ${importedCount} asset(s). ${failedImports.length} file(s) could not be imported.`,
+      "success"
+    );
+  } else {
+    setStatus(`Added ${importedCount} asset(s) to Library.`, "success");
+  }
+}
+
+async function placeLibraryAsset() {
+  await ensureLibraryStorage();
+  const assets = getSelectedLibraryAssets();
+  if (!assets.length) {
+    setStatus("Select an asset first.", "error");
+    return;
+  }
+
+  try {
+    const placeDescriptors = [];
+    for (const asset of assets) {
+      const fileEntry = await libraryFolderEntry.getEntry(asset.fileName);
+      const token = uxpFs.createSessionToken(fileEntry);
+      placeDescriptors.push({
+        _obj: "placeEvent",
+        null: {
+          _path: token,
+          _kind: "local",
+        },
+        _options: { dialogOptions: "dontDisplay" },
+      });
+    }
+    await core.executeAsModal(async () => {
+      await action.batchPlay(placeDescriptors, { synchronousExecution: true });
+    }, { commandName: "Place Library Asset" });
+    setStatus(assets.length === 1 ? `Applied "${assets[0].name}".` : `Applied ${assets.length} assets.`, "success");
+  } catch (error) {
+    showError("Place asset failed", error);
+  }
+}
+
+async function saveTempDocToLibrary(tempDoc, requestedName, originalFileName) {
+  await ensureLibraryStorage();
+  const finalName = sanitizeAssetName(requestedName) || "Asset";
+  const storedFileName = await getUniqueLibraryFileName(finalName, "png");
+  const storedFile = await libraryFolderEntry.createFile(storedFileName, { overwrite: true });
+
+  await tempDoc.saveAs.png(storedFile, {}, true);
+  await tempDoc.close(constants.SaveOptions.DONOTSAVECHANGES);
+
+  const assetRecord = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name: finalName,
+    fileName: storedFileName,
+    originalFileName: originalFileName || `${finalName}.png`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    previewURI: buildLibraryPreviewURI(storedFileName, finalName, storedFile.nativePath || ""),
+  };
+  libraryAssets.unshift(assetRecord);
+  selectedLibraryAssetIds = [assetRecord.id];
+  await writeLibraryMetadata();
+  renderLibraryAssets();
+}
+
+async function saveSelectedToLibrary() {
+  const doc = app.activeDocument;
+  if (!doc || !doc.activeLayers || doc.activeLayers.length === 0) {
+    setStatus("Select at least one layer first.", "error");
+    return;
+  }
+
+  const typedName = sanitizeAssetName(getVal("library-asset-name")) || "Selection Asset";
+  setStatus("Saving selected layers to Library...", "working");
+
+  try {
+    let tempDoc = null;
+    await core.executeAsModal(async () => {
+      const sourceDoc = app.activeDocument;
+      if (!sourceDoc) throw new Error("No active document.");
+      const width = Math.max(1, Number(sourceDoc.width) || 2000);
+      const height = Math.max(1, Number(sourceDoc.height) || 2000);
+      await action.batchPlay([{ _obj: "copyMerged", _options: { dialogOptions: "dontDisplay" } }], {});
+      tempDoc = await app.documents.add(width, height, 72, "Library_Selection", constants.NewDocumentMode.RGB, constants.DocumentFill.TRANSPARENT);
+      app.activeDocument = tempDoc;
+      await action.batchPlay([{ _obj: "paste", _options: { dialogOptions: "dontDisplay" } }], {});
+    }, { commandName: "Save Selection To Library" });
+
+    if (!tempDoc) throw new Error("Failed to capture selected layers.");
+    await saveTempDocToLibrary(tempDoc, typedName, `${typedName}.png`);
+    setStatus(`Saved "${typedName}" to Library.`, "success");
+  } catch (error) {
+    showError("Save selection failed", error);
+  }
+}
+
+async function pasteClipboardToLibrary() {
+  const typedName = sanitizeAssetName(getVal("library-asset-name")) || "Clipboard Asset";
+  setStatus("Pasting clipboard into Library...", "working");
+
+  try {
+    let tempDoc = null;
+    await core.executeAsModal(async () => {
+      tempDoc = await app.documents.add(2200, 2200, 72, "Library_Clipboard", constants.NewDocumentMode.RGB, constants.DocumentFill.TRANSPARENT);
+      app.activeDocument = tempDoc;
+      await action.batchPlay([{ _obj: "paste", _options: { dialogOptions: "dontDisplay" } }], { synchronousExecution: true });
+    }, { commandName: "Paste Clipboard To Library" });
+
+    if (!tempDoc) throw new Error("Clipboard paste failed.");
+    await saveTempDocToLibrary(tempDoc, typedName, `${typedName}.png`);
+    setStatus(`Pasted clipboard as "${typedName}".`, "success");
+  } catch (error) {
+    showError("Paste clipboard failed", error);
+  }
+}
+
+async function renameLibraryAsset() {
+  const asset = libraryAssets.find((item) => item.id === getSelectedLibraryAssetId());
+  if (!asset) {
+    setStatus("Select an asset to rename.", "error");
+    return;
+  }
+
+  const nextName = sanitizeAssetName(getVal("library-asset-name"));
+  if (!nextName) {
+    setStatus("Enter a new name first.", "error");
+    return;
+  }
+
+  asset.name = nextName;
+  asset.updatedAt = new Date().toISOString();
+  await writeLibraryMetadata();
+  renderLibraryAssets();
+  setStatus(`Renamed asset to "${nextName}".`, "success");
+}
+
+async function deleteLibraryAsset() {
+  await ensureLibraryStorage();
+  const index = libraryAssets.findIndex((item) => item.id === getSelectedLibraryAssetId());
+  if (index < 0) {
+    setStatus("Select an asset to delete.", "error");
+    return;
+  }
+
+  const asset = libraryAssets[index];
+  try {
+    const fileEntry = await libraryFolderEntry.getEntry(asset.fileName);
+    await fileEntry.delete();
+  } catch (_) {
+    // Ignore missing files and remove metadata anyway.
+  }
+
+  libraryAssets.splice(index, 1);
+  selectedLibraryAssetIds = libraryAssets[0] ? [libraryAssets[0].id] : [];
+  await writeLibraryMetadata();
+  renderLibraryAssets();
+  setStatus(`Deleted "${asset.name}".`, "success");
+}
+
+function bindLibraryEvents() {
+  const refreshButton = document.getElementById("btn-library-refresh");
+  if (refreshButton && !refreshButton.dataset.bound) {
+    refreshButton.dataset.bound = "true";
+    refreshButton.addEventListener("click", () => {
+      refreshLibraryView().catch((error) => console.warn("Library refresh failed", error));
+    });
+  }
+
+  const searchInput = document.getElementById("library-search-input");
+  if (searchInput && !searchInput.dataset.bound) {
+    searchInput.dataset.bound = "true";
+    searchInput.addEventListener("input", renderLibraryAssets);
+  }
+
+  const list = document.getElementById("library-assets-list");
+  if (list && !list.dataset.bound) {
+    list.dataset.bound = "true";
+    list.addEventListener("click", (event) => {
+      const actionButton = event.target && typeof event.target.closest === "function"
+        ? event.target.closest(".library-row-btn[data-library-action][data-library-asset-id]")
+        : null;
+      if (actionButton) {
+        const assetId = actionButton.getAttribute("data-library-asset-id");
+        const actionName = actionButton.getAttribute("data-library-action");
+        selectLibraryAsset(assetId);
+        if (actionName === "place") placeLibraryAsset();
+        if (actionName === "rename") renameLibraryAsset();
+        if (actionName === "delete") deleteLibraryAsset();
+        return;
+      }
+      const row = event.target && typeof event.target.closest === "function"
+        ? event.target.closest(".library-asset-row[data-library-asset-id]")
+        : null;
+      if (!row) return;
+      const assetId = row.getAttribute("data-library-asset-id");
+      const multiSelect = !!(event.ctrlKey || event.metaKey || event.shiftKey);
+      selectLibraryAsset(assetId, multiSelect);
+      if (!multiSelect) {
+        placeLibraryAsset().catch((error) => console.warn("Library place failed", error));
+      }
+    });
+  }
+}
+
+async function initializeLibraryManager() {
+  ensureLibraryImportButtons();
+  bindLibraryEvents();
+  await refreshLibraryView();
+}
+
+function createLibraryImportButton(id, text) {
+  const button = document.createElement("button");
+  button.id = id;
+  button.type = "button";
+  button.className = "library-import-btn";
+  button.setAttribute("data-action-button", "");
+  const iconMap = {
+    "btn-library-add-files": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/><path d="M19 19H5V5h9l5 5z"/></svg>`,
+    "btn-library-save-selection": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="M8 12l4 4 4-4"/><path d="M6 20h12"/></svg>`,
+    "btn-library-paste-clipboard": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8v3H8z"/><path d="M7 7h10v13H7z"/><path d="M10 11h4M10 15h4"/></svg>`,
+  };
+  button.innerHTML = `${iconMap[id] || ""}<span>${text}</span>`;
+  return button;
+}
+
+function ensureLibraryImportButtons() {
+  const libraryPanel = document.querySelector('[data-tab-panel="library"]');
+  if (!libraryPanel) return;
+  const firstCard = libraryPanel.querySelector(".card");
+  if (!firstCard) return;
+
+  let grid = firstCard.querySelector(".library-import-grid");
+  if (!grid) {
+    grid = document.createElement("div");
+    grid.className = "library-import-grid";
+    const hint = firstCard.querySelector(".hint-text");
+    if (hint && hint.parentNode === firstCard) firstCard.insertBefore(grid, hint);
+    else firstCard.appendChild(grid);
+  }
+
+  const required = [
+    { id: "btn-library-add-files", text: "Import Any File" },
+    { id: "btn-library-save-selection", text: "Save Selected" },
+    { id: "btn-library-paste-clipboard", text: "Paste Clipboard" },
+  ];
+
+  required.forEach((item) => {
+    let button = document.getElementById(item.id);
+    if (!button) {
+      button = createLibraryImportButton(item.id, item.text);
+      grid.appendChild(button);
+    } else {
+      button.classList.add("library-import-btn");
+      button.setAttribute("data-action-button", "");
+      button.style.display = "inline-flex";
+      button.style.alignItems = "center";
+      button.style.justifyContent = "center";
+      button.style.gap = "8px";
+      if (!button.querySelector("svg")) {
+        const iconButton = createLibraryImportButton(item.id, item.text);
+        button.innerHTML = iconButton.innerHTML;
+      } else if (!button.querySelector("span")) {
+        button.innerHTML = `${button.innerHTML}<span>${item.text}</span>`;
+      }
+    }
+  });
+}
+
+// â”€â”€â”€ UI helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function setStatus(msg, type) {
   const wrap = document.getElementById("status-wrap");
@@ -75,7 +1261,7 @@ function setStatus(msg, type) {
 
 function showError(label, err) {
   const msg = err && err.message ? err.message : String(err);
-  setStatus(label + " — see details below", "error");
+  setStatus(label + " â€” see details below", "error");
   const log = document.getElementById("error-log");
   if (log) {
     log.textContent = label + ":\n" + msg;
@@ -91,7 +1277,7 @@ function getDropdownValue(el) {
   if (el.value) return el.value;
   const ariaSelected = el.querySelector("sp-menu-item[aria-selected='true']");
   if (ariaSelected) return ariaSelected.getAttribute("value") || "";
-  const first = el.querySelector("sp-menu-item");
+  const first = el.querySelector("sp-menu-item:not([disabled])");
   return first ? first.getAttribute("value") || "" : "";
 }
 
@@ -106,16 +1292,17 @@ function isChecked(id) {
   return !!(el && el.checked);
 }
 
-// ─── Artboard Setup readers (use IDs: artboard-preset, artboard-position, etc.)
+// â”€â”€â”€ Artboard Setup readers (use IDs: artboard-preset, artboard-position, etc.)
 function getArtboardInputs() {
   const preset = getVal("artboard-preset");
+  const presetDef = getPresetDefinition(preset);
   let artW, artH;
-  if (preset === "custom" || !PRESETS[preset]) {
+  if (preset === CUSTOM_PRESET_SENTINEL || !presetDef) {
     artW = parseInt(getVal("artboard-custom-w")) || 1080;
     artH = parseInt(getVal("artboard-custom-h")) || 1080;
   } else {
-    artW = PRESETS[preset].w;
-    artH = PRESETS[preset].h;
+    artW = presetDef.w;
+    artH = presetDef.h;
   }
   const posRaw = (getVal("artboard-position") || "left").trim().toLowerCase();
   const position = ["left", "right", "up", "bottom"].includes(posRaw) ? posRaw : "left";
@@ -124,17 +1311,18 @@ function getArtboardInputs() {
   return { artW, artH, position, count, name };
 }
 
-// ─── Slide Setup readers (use IDs: slide-size-preset, slide-count, etc.)
+// â”€â”€â”€ Slide Setup readers (use IDs: slide-size-preset, slide-count, etc.)
 function getSlideInputs() {
   const preset = getVal("slide-size-preset");
+  const presetDef = getPresetDefinition(preset);
   let slideW;
   let slideH;
-  if (preset === "custom" || !PRESETS[preset]) {
+  if (preset === CUSTOM_PRESET_SENTINEL || !presetDef) {
     slideW = parseInt(getVal("slide-custom-w")) || 1080;
     slideH = parseInt(getVal("slide-custom-h")) || 1080;
   } else {
-    slideW = PRESETS[preset].w;
-    slideH = PRESETS[preset].h;
+    slideW = presetDef.w;
+    slideH = presetDef.h;
   }
   const resolutionScale = isChecked("slide-highres") ? 2 : 1;
   slideW *= resolutionScale;
@@ -180,12 +1368,12 @@ function updateArtboardHint() {
     const hint = document.getElementById("artboard-size-hint");
     if (hint) {
       const direction = position.charAt(0).toUpperCase() + position.slice(1);
-      hint.textContent = `${count} artboard(s) · ${artW} × ${artH} px · Direction: ${direction} · Gap: ${ARTBOARD_GAP}px`;
+      hint.textContent = `${count} artboard(s) Â· ${artW} Ã— ${artH} px Â· Direction: ${direction} Â· Gap: ${ARTBOARD_GAP}px`;
     }
   } catch (_) { }
 }
 
-// ─── Thumbnails ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Thumbnails â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function renderThumbnails() {
   const container = document.getElementById("slide-thumbnails-container");
@@ -214,12 +1402,12 @@ function renderThumbnails() {
 
     const moveLeft = document.createElement("button");
     moveLeft.className = "slide-move-button";
-    moveLeft.textContent = "◀";
+    moveLeft.textContent = "â—€";
     moveLeft.addEventListener("click", (e) => { e.stopPropagation(); moveSlideByOffset(slide.id, -1); });
 
     const moveRight = document.createElement("button");
     moveRight.className = "slide-move-button";
-    moveRight.textContent = "▶";
+    moveRight.textContent = "â–¶";
     moveRight.addEventListener("click", (e) => { e.stopPropagation(); moveSlideByOffset(slide.id, 1); });
 
     controls.appendChild(moveLeft);
@@ -347,20 +1535,20 @@ function buildDuplicateLayoutRects(sourceBounds, artW, artH, position, count, ga
 
     switch (position) {
       case "right":
-        left = sourceBounds.right + gap;
-        top = sourceBounds.top + i * (artH + gap);
+        left = sourceBounds.right + gap + i * (artW + gap);
+        top = sourceBounds.top;
         break;
       case "left":
-        left = sourceBounds.left - artW - gap;
-        top = sourceBounds.top + i * (artH + gap);
+        left = sourceBounds.left - (artW + gap) * (i + 1);
+        top = sourceBounds.top;
         break;
       case "bottom":
-        left = sourceBounds.left + i * (artW + gap);
-        top = sourceBounds.bottom + gap;
+        left = sourceBounds.left;
+        top = sourceBounds.bottom + gap + i * (artH + gap);
         break;
       case "up":
-        left = sourceBounds.left + i * (artW + gap);
-        top = sourceBounds.top - artH - gap;
+        left = sourceBounds.left;
+        top = sourceBounds.top - (artH + gap) * (i + 1);
         break;
     }
 
@@ -455,7 +1643,7 @@ async function createArtboardsInActiveDocument({ artW, artH, position, count, na
 
 async function createSlidesFromSetup() {
   const { slideW, slideH, slideCount, exportPrefix } = getSlideInputs();
-  setStatus(`Creating ${slideCount} slide artboard(s)…`, "working");
+  setStatus(`Creating ${slideCount} slide artboard(s)â€¦`, "working");
   try {
     await core.executeAsModal(async () => {
       await createArtboardsInActiveDocument({
@@ -469,7 +1657,7 @@ async function createSlidesFromSetup() {
 
     slides = [];
     renderThumbnails();
-    setStatus(`✓ Created ${slideCount} slide artboard(s) from Slide Setup`, "success");
+    setStatus(`âœ“ Created ${slideCount} slide artboard(s) from Slide Setup`, "success");
   } catch (e) {
     showError("Create Slides failed", e);
   }
@@ -604,7 +1792,7 @@ async function createCanvas() {
     return;
   }
 
-  setStatus(`Creating ${count} artboard(s) at ${artW}×${artH} px…`, "working");
+  setStatus(`Creating ${count} artboard(s) at ${artW}Ã—${artH} pxâ€¦`, "working");
   try {
     await core.executeAsModal(async () => {
       await createArtboardsInActiveDocument({ artW, artH, position, count, name });
@@ -613,22 +1801,22 @@ async function createCanvas() {
     slides = [];
     renderThumbnails();
     setStatus(
-      `✓ Created ${count} artboard(s) in the active document`,
+      `âœ“ Created ${count} artboard(s) in the active document`,
       "success"
     );
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     if (msg.includes("user cancelled") || msg.includes("cancelled")) {
-      setStatus("Cancelled — no changes made", "");
+      setStatus("Cancelled â€” no changes made", "");
     } else {
       showError("Create Artboard failed", e);
     }
   }
 }
 
-// ─── 1b. Duplicate Artboard with Design ──────────────────────────────────────
-// Finds the first artboardSection in the active document, duplicates it N times
-// (count from the artboard-count field), placing copies side-by-side.
+// â”€â”€â”€ 1b. Duplicate Artboard with Design â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Finds the first artboardSection in the active document and adds N duplicates
+// from the artboard-count field, placing the copies in the chosen direction.
 
 async function duplicateArtboardWithDesign() {
   const { position, count, name } = getArtboardInputs();
@@ -639,7 +1827,7 @@ async function duplicateArtboardWithDesign() {
     return;
   }
 
-  setStatus("Duplicating artboard with design…", "working");
+  setStatus("Duplicating artboard with designâ€¦", "working");
   try {
     await core.executeAsModal(async () => {
       const activeTopLayer = Array.from(doc.activeLayers || [])
@@ -657,7 +1845,7 @@ async function duplicateArtboardWithDesign() {
       }
 
       if (!sourceArtboard || !sourceLayer) {
-        sourceArtboard = await createSourceArtboardFromDocument(doc, count > 1 ? `${name} 1` : name);
+        sourceArtboard = await createSourceArtboardFromDocument(doc, `${name} 1`);
         sourceLayer = sourceArtboard.layer;
       }
 
@@ -694,30 +1882,21 @@ async function duplicateArtboardWithDesign() {
         right: normalizedBounds.right + expansion.shiftX,
         bottom: normalizedBounds.bottom + expansion.shiftY,
       };
-      const firstRect = layoutRects[0];
-      const firstTarget = {
-        left: firstRect.left + expansion.shiftX,
-        top: firstRect.top + expansion.shiftY,
-      };
-      await sourceLayer.translate(
-        firstTarget.left - shiftedSourceBounds.left,
-        firstTarget.top - shiftedSourceBounds.top
-      );
 
       const placedBoards = [{
         layer: sourceLayer,
-        left: firstTarget.left,
-        top: firstTarget.top,
+        left: shiftedSourceBounds.left,
+        top: shiftedSourceBounds.top,
       }];
 
-      for (let i = 1; i < count; i++) {
+      for (let i = 0; i < layoutRects.length; i++) {
         const rect = layoutRects[i];
         const targetLeft = rect.left + expansion.shiftX;
         const targetTop = rect.top + expansion.shiftY;
 
         const duplicateLayer = await sourceLayer.duplicate();
-        const offsetX = targetLeft - firstTarget.left;
-        const offsetY = targetTop - firstTarget.top;
+        const offsetX = targetLeft - shiftedSourceBounds.left;
+        const offsetY = targetTop - shiftedSourceBounds.top;
         await duplicateLayer.translate(offsetX, offsetY);
         placedBoards.push({
           layer: duplicateLayer,
@@ -726,7 +1905,7 @@ async function duplicateArtboardWithDesign() {
         });
       }
 
-      const sortAxis = (position === "up" || position === "bottom") ? "left" : "top";
+      const sortAxis = (position === "left" || position === "right") ? "left" : "top";
       placedBoards.sort((a, b) => {
         if (a[sortAxis] !== b[sortAxis]) return a[sortAxis] - b[sortAxis];
         if (sortAxis !== "left" && a.left !== b.left) return a.left - b.left;
@@ -735,23 +1914,23 @@ async function duplicateArtboardWithDesign() {
       });
 
       placedBoards.forEach((board, index) => {
-        board.layer.name = count > 1 ? `${name} ${index + 1}` : name;
+        board.layer.name = placedBoards.length > 1 ? `${name} ${index + 1}` : name;
       });
 
     }, { commandName: "Duplicate Artboard with Design" });
 
-    setStatus(`✓ Added ${Math.max(0, count - 1)} duplicated artboard(s) with design intact`, "success");
+    setStatus(`âœ“ Added ${count} duplicated artboard(s) with design intact`, "success");
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     if (msg.includes("user cancelled") || msg.includes("cancelled")) {
-      setStatus("Cancelled — no changes made", "");
+      setStatus("Cancelled â€” no changes made", "");
     } else {
       showError("Duplicate Artboard failed", e);
     }
   }
 }
 
-// ─── 1c. Artboard from Layer Size ────────────────────────────────────────────
+// â”€â”€â”€ 1c. Artboard from Layer Size â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Uses the active document canvas size as the artboard size.
 
 async function artboardFromLayerSize() {
@@ -763,23 +1942,23 @@ async function artboardFromLayerSize() {
     return;
   }
 
-  setStatus("Reading current canvas size…", "working");
+  setStatus("Reading current canvas sizeâ€¦", "working");
   try {
     await core.executeAsModal(async () => {
       const artW = Math.max(1, Math.round(Number(doc.width)));
       const artH = Math.max(1, Math.round(Number(doc.height)));
 
-      if (artW < 1 || artH < 1) throw new Error(`Invalid canvas size: ${artW}×${artH}`);
+      if (artW < 1 || artH < 1) throw new Error(`Invalid canvas size: ${artW}Ã—${artH}`);
 
       await createArtboardsInActiveDocument({ artW, artH, position, count, name });
 
     }, { commandName: "Artboard from Canvas Size" });
 
-    setStatus(`✓ Created ${count} artboard(s) using the current canvas size`, "success");
+    setStatus(`âœ“ Created ${count} artboard(s) using the current canvas size`, "success");
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     if (msg.includes("user cancelled") || msg.includes("cancelled")) {
-      setStatus("Cancelled — no changes made", "");
+      setStatus("Cancelled â€” no changes made", "");
     } else {
       showError("Artboard from Canvas Size failed", e);
     }
@@ -790,7 +1969,7 @@ async function artboardFromLayerSize() {
 
 async function addGuides() {
   const { slideCount } = getSlideInputs();
-  setStatus("Adding guides…", "working");
+  setStatus("Adding guidesâ€¦", "working");
   try {
     await core.executeAsModal(async () => {
       const doc = app.activeDocument;
@@ -809,16 +1988,16 @@ async function addGuides() {
         }], {});
       }
     }, { commandName: "Add Guides" });
-    setStatus(`✓ ${slideCount - 1} guide(s) added`, "success");
+    setStatus(`âœ“ ${slideCount - 1} guide(s) added`, "success");
   } catch (e) {
     showError("Add Guides failed", e);
   }
 }
 
-// ─── 3. Clear Guides ──────────────────────────────────────────────────────────
+// â”€â”€â”€ 3. Clear Guides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function clearGuides() {
-  setStatus("Clearing guides…", "working");
+  setStatus("Clearing guidesâ€¦", "working");
   try {
     await core.executeAsModal(async () => {
       await action.batchPlay([{
@@ -827,13 +2006,13 @@ async function clearGuides() {
         _options: { dialogOptions: "dontDisplay" },
       }], {});
     }, { commandName: "Clear Guides" });
-    setStatus("✓ Guides cleared", "success");
+    setStatus("âœ“ Guides cleared", "success");
   } catch (e) {
     showError("Clear Guides failed", e);
   }
 }
 
-// ─── 4. Crop Slides ───────────────────────────────────────────────────────────
+// â”€â”€â”€ 4. Crop Slides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Reads ONLY from Slide Setup fields (slide-size-preset, slide-count, etc.)
 
 async function cropSlides() {
@@ -863,7 +2042,7 @@ async function cropSlides() {
   }
 
   slides = [];
-  setStatus("Cropping slides…", "working");
+  setStatus("Cropping slidesâ€¦", "working");
 
   try {
     for (let i = 0; i < slideCount; i++) {
@@ -899,7 +2078,7 @@ async function cropSlides() {
         });
       }, { commandName: `Crop Slide ${num}` });
 
-      setStatus(`Cropped ${i + 1} / ${slideCount}…`, "working");
+      setStatus(`Cropped ${i + 1} / ${slideCount}â€¦`, "working");
     }
 
     renderThumbnails();
@@ -907,13 +2086,13 @@ async function cropSlides() {
     // Show the Export All Slides button after cropping
     const exportButton = document.getElementById("btn-export-slides");
     if (exportButton) exportButton.classList.remove("hidden");
-    setStatus(`✓ ${slideCount} slides cropped — ready to export`, "success");
+    setStatus(`âœ“ ${slideCount} slides cropped â€” ready to export`, "success");
   } catch (e) {
     showError("Crop Slides failed", e);
   }
 }
 
-// ─── 5. Export ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ 5. Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function closeAllSlideDocs() {
   if (slides.length === 0) return;
@@ -930,7 +2109,7 @@ async function closeAllSlideDocs() {
 
 async function exportSlides(forcedFormat) {
   if (slides.length === 0) {
-    showError("Export failed", new Error("No slides — tap Crop Slides first."));
+    showError("Export failed", new Error("No slides â€” tap Crop Slides first."));
     return;
   }
 
@@ -940,7 +2119,7 @@ async function exportSlides(forcedFormat) {
   const ext = doJpg ? "jpg" : "png";
   const count = slides.length;
 
-  setStatus("Choose folder to save slides…", "working");
+  setStatus("Choose folder to save slidesâ€¦", "working");
   let folderEntry;
   try {
     folderEntry = await uxpFs.getFolder();
@@ -966,11 +2145,11 @@ async function exportSlides(forcedFormat) {
         } else {
           await slideDoc.saveAs.png(fileEntry, {}, true);
         }
-        setStatus(`Exported ${i + 1} / ${count}…`, "working");
+        setStatus(`Exported ${i + 1} / ${count}â€¦`, "working");
       }
     }, { commandName: doJpg ? "Export Slides as JPG" : "Export Slides" });
 
-    setStatus(`✓ All ${slides.length} slides exported!`, "success");
+    setStatus(`âœ“ All ${slides.length} slides exported!`, "success");
     await closeAllSlideDocs();
     updateDeleteSlidesUI();
   } catch (e) {
@@ -978,7 +2157,7 @@ async function exportSlides(forcedFormat) {
   }
 }
 
-// ─── 6. Delete Slides ────────────────────────────────────────────────────────
+// â”€â”€â”€ 6. Delete Slides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function updateDeleteSlidesUI() {
   const card = document.getElementById("delete-slides-card");
@@ -1028,7 +2207,7 @@ async function deleteSelectedSlides() {
   if (checked.length === 0) { showError("Delete failed", new Error("No slides selected.")); return; }
   const indices = Array.from(checked).map(cb => parseInt(cb.dataset.slideIndex)).sort((a, b) => b - a);
   const ids = Array.from(checked).map(cb => parseInt(cb.dataset.slideId));
-  setStatus("Deleting selected slides…", "working");
+  setStatus("Deleting selected slidesâ€¦", "working");
   try {
     await core.executeAsModal(async () => {
       for (const id of ids) {
@@ -1038,7 +2217,7 @@ async function deleteSelectedSlides() {
     }, { commandName: "Delete Slides" });
     for (const i of indices) slides.splice(i, 1);
     updateDeleteSlidesUI();
-    setStatus(`✓ ${indices.length} slide(s) deleted!`, "success");
+    setStatus(`âœ“ ${indices.length} slide(s) deleted!`, "success");
   } catch (e) {
     showError("Delete Slides failed", e);
   }
@@ -1098,7 +2277,7 @@ async function fitViewToScreen() {
   }
 }
 
-// ─── Dropdown binding ────────────────────────────────────────────────────────
+// â”€â”€â”€ Dropdown binding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function syncDropdownSelection(dropdownId, textTargetId, forcedValue) {
   const dropdown = document.getElementById(dropdownId);
@@ -1108,7 +2287,7 @@ function syncDropdownSelection(dropdownId, textTargetId, forcedValue) {
   const item =
     dropdown.querySelector(`sp-menu-item[value="${value}"]`) ||
     dropdown.querySelector("sp-menu-item[selected]") ||
-    dropdown.querySelector("sp-menu-item");
+    dropdown.querySelector("sp-menu-item:not([disabled])");
   if (!item) return;
   const itemValue = item.getAttribute("value") || "";
   dropdown.value = itemValue;
@@ -1124,11 +2303,13 @@ function bindDropdownPreview(dropdownId, textTargetId, onSync) {
   if (!dropdown) return;
   const getEv = (e) => (e && e.target && e.target.value) ? e.target.value : getDropdownValue(dropdown);
   const apply = (v) => {
+    if (String(v || "").startsWith(PRESET_GROUP_SENTINEL_PREFIX)) return;
     syncDropdownSelection(dropdownId, textTargetId, v);
     if (onSync) onSync(getDropdownValue(dropdown));
   };
   const clickSel = (e) => {
     const item = e.target && typeof e.target.closest === "function" ? e.target.closest("sp-menu-item") : null;
+    if (item && item.hasAttribute("disabled")) return;
     if (item) apply(item.getAttribute("value") || "");
   };
   apply(getDropdownValue(dropdown));
@@ -1140,6 +2321,7 @@ function bindDropdownPreview(dropdownId, textTargetId, onSync) {
   dropdown.querySelectorAll("sp-menu-item").forEach(item => {
     item.addEventListener("click", () => apply(item.getAttribute("value") || ""));
     item.addEventListener("keydown", (e) => {
+      if (item.hasAttribute("disabled")) return;
       if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") apply(item.getAttribute("value") || "");
     });
   });
@@ -1170,6 +2352,11 @@ function setActiveTab(tabName) {
     if (active && tabName === "colors" && typeof scheduleWheelDraw === "function") {
       setTimeout(scheduleWheelDraw, 50);
     }
+    if (active && tabName === "library") {
+      refreshLibraryView().catch((error) => {
+        console.warn("Library refresh failed", error);
+      });
+    }
   });
 }
 
@@ -1199,13 +2386,25 @@ function initTabs() {
   setActiveTab(tab || "artboard");
 }
 
-// ─── Init ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function initUI() {
+  // Safety reset: ensure the preset modal lock state never leaks across panel reloads.
+  document.body.classList.remove("preset-modal-open");
+  const presetModal = document.getElementById("preset-manager-modal");
+  if (presetModal) {
+    presetModal.classList.add("hidden");
+    presetModal.setAttribute("aria-hidden", "true");
+  }
+
   const artCustomFields = document.getElementById("artboard-custom-fields");
   const slideCustomFields = document.getElementById("slide-custom-fields");
   const artboardFromCanvasButton = document.getElementById("btn-artboard-from-layer");
   if (artboardFromCanvasButton) artboardFromCanvasButton.textContent = "Artboard from Canvas Size";
+  initializeLibraryManager().catch((error) => {
+    console.warn("Library init failed", error);
+  });
+  initializePresetManager();
   initTabs();
   setTimeout(() => {
     if (typeof initializeAutoResize === 'function') initializeAutoResize();
@@ -1213,14 +2412,14 @@ function initUI() {
 
   // Artboard Setup dropdowns
   bindDropdownPreview("artboard-preset", "artboard-preset-inline", (value) => {
-    if (artCustomFields) artCustomFields.classList.toggle("hidden", value !== "custom");
+    if (artCustomFields) artCustomFields.classList.toggle("hidden", value !== CUSTOM_PRESET_SENTINEL);
     updateArtboardHint();
   });
   bindDropdownPreview("artboard-position", "artboard-position-inline", () => updateArtboardHint());
 
   // Slide Setup dropdown
   bindDropdownPreview("slide-size-preset", "slide-size-preset-inline", (value) => {
-    if (slideCustomFields) slideCustomFields.classList.toggle("hidden", value !== "custom");
+    if (slideCustomFields) slideCustomFields.classList.toggle("hidden", value !== CUSTOM_PRESET_SENTINEL);
   });
 
   // Export format dropdown
@@ -1240,8 +2439,8 @@ function initUI() {
   const selectAllCb = document.getElementById("select-all-checkbox");
   if (selectAllCb) selectAllCb.addEventListener("change", handleSelectAllChange);
 
-  if (artCustomFields) artCustomFields.classList.toggle("hidden", getVal("artboard-preset") !== "custom");
-  if (slideCustomFields) slideCustomFields.classList.toggle("hidden", getVal("slide-size-preset") !== "custom");
+  if (artCustomFields) artCustomFields.classList.toggle("hidden", getVal("artboard-preset") !== CUSTOM_PRESET_SENTINEL);
+  if (slideCustomFields) slideCustomFields.classList.toggle("hidden", getVal("slide-size-preset") !== CUSTOM_PRESET_SENTINEL);
   updateArtboardHint();
   updateDeleteSlidesUI();
 }
@@ -1276,6 +2475,15 @@ function handleButtonClick(event) {
     case "btn-rasterize": rasterizeSelectedLayers(); break;
     case "btn-organize-slides": organizeLayersIntoSlides(); break;
     case "btn-delete-slides": deleteSelectedSlides(); break;
+    case "btn-library-add-files": addFilesToLibrary(); break;
+    case "btn-library-add-header": addFilesToLibrary(); break;
+    case "btn-library-save-selection": saveSelectedToLibrary(); break;
+    case "btn-library-paste-inline": pasteClipboardToLibrary(); break;
+    case "btn-library-paste-clipboard": pasteClipboardToLibrary(); break;
+    case "btn-library-refresh": refreshLibraryView(); break;
+    case "btn-library-place": placeLibraryAsset(); break;
+    case "btn-library-rename": renameLibraryAsset(); break;
+    case "btn-library-delete": deleteLibraryAsset(); break;
     default: break;
   }
 }
@@ -1318,6 +2526,137 @@ document.addEventListener("keydown", handleKeydown);
 
 function getArtboardLikeBounds(layer) {
   return normalizeBounds((layer && layer.boundsNoEffects) ? layer.boundsNoEffects : (layer && layer.bounds));
+}
+
+function isEmptyBounds(bounds) {
+  if (!bounds) return true;
+  const width = Math.round(bounds.right - bounds.left);
+  const height = Math.round(bounds.bottom - bounds.top);
+  return width <= 0 && height <= 0;
+}
+
+function isSlideFolderLayer(layer) {
+  return !!(layer && layer.kind === constants.LayerKind.GROUP && /^Slide\s+\d+/i.test(String(layer.name || "").trim()));
+}
+
+function sortSlideRegions(regions) {
+  return Array.from(regions || []).sort((a, b) => {
+    const topDiff = (a.top || 0) - (b.top || 0);
+    if (topDiff !== 0) return topDiff;
+    const leftDiff = (a.left || 0) - (b.left || 0);
+    if (leftDiff !== 0) return leftDiff;
+    return (a.index || 0) - (b.index || 0);
+  });
+}
+
+function buildCanvasSlideRegions(docWidth, docHeight, slideCount) {
+  const count = Math.max(1, Math.round(slideCount) || 1);
+  const sliceW = Math.max(1, docWidth / count);
+  const regions = [];
+
+  for (let i = 1; i <= count; i++) {
+    regions.push({
+      index: i,
+      left: (i - 1) * sliceW,
+      right: i === count ? docWidth : i * sliceW,
+      top: 0,
+      bottom: docHeight,
+    });
+  }
+
+  return regions;
+}
+
+function getBestSlideForBounds(bounds, slideRegions) {
+  if (!bounds) return null;
+  const { left, right } = bounds;
+
+  // Skip empty / invisible layers
+  if (left === 0 && right === 0 && Math.round(bounds.bottom - bounds.top) === 0) return null;
+  if (Math.round(right - left) === 0 && Math.round(bounds.bottom - bounds.top) === 0) return null;
+
+  let bestSlide = null;
+  let bestOverlap = 0;
+
+  for (const region of slideRegions) {
+    const overlapLeft = Math.max(left, region.left);
+    const overlapRight = Math.min(right, region.right);
+    const overlap = Math.max(0, overlapRight - overlapLeft);
+
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      bestSlide = region.index;
+    }
+  }
+
+  if (!bestSlide) {
+    const centerX = (left + right) / 2;
+    const fallbackRegion = slideRegions[slideRegions.length - 1] || { index: 1, left: 0, right: 1 };
+    for (const region of slideRegions) {
+      if (centerX >= region.left && centerX < region.right) {
+        bestSlide = region.index;
+        break;
+      }
+    }
+    if (!bestSlide) bestSlide = fallbackRegion.index;
+  }
+
+  return bestSlide;
+}
+
+function mergeSlideAssignments(target, source) {
+  for (const [slideIndex, ids] of source.entries()) {
+    if (!target.has(slideIndex)) target.set(slideIndex, []);
+    target.get(slideIndex).push(...ids);
+  }
+  return target;
+}
+
+function collectSlideAssignments(layer, slideRegions, artboardIds = new Set()) {
+  const assignments = new Map();
+  if (!layer || layer.isBackgroundLayer || isSlideFolderLayer(layer)) return assignments;
+
+  const layerId = toNumberId(layer.id);
+  const isArtboardContainer = layerId !== null && artboardIds.has(layerId);
+  const hasChildren = !!(layer.layers && layer.layers.length > 0);
+
+  let bounds = null;
+  try {
+    bounds = getArtboardLikeBounds(layer);
+  } catch (_) {
+    bounds = null;
+  }
+
+  if (hasChildren) {
+    const childAssignments = new Map();
+    for (const child of Array.from(layer.layers || [])) {
+      mergeSlideAssignments(childAssignments, collectSlideAssignments(child, slideRegions, artboardIds));
+    }
+
+    if (isArtboardContainer) {
+      return childAssignments;
+    }
+
+    if (childAssignments.size === 1 && !isArtboardContainer) {
+      const [[slideIndex]] = childAssignments.entries();
+      if (layerId !== null) {
+        childAssignments.clear();
+        childAssignments.set(slideIndex, [layerId]);
+      }
+      return childAssignments;
+    }
+
+    if (childAssignments.size > 0) return childAssignments;
+  }
+
+  if (isEmptyBounds(bounds)) return assignments;
+
+  const bestSlide = getBestSlideForBounds(bounds, slideRegions);
+  if (bestSlide && layerId !== null) {
+    assignments.set(bestSlide, [layerId]);
+  }
+
+  return assignments;
 }
 
 function getTopLevelLayers(doc) {
@@ -1556,7 +2895,7 @@ async function autoCalculateAndCreateSlide() {
   }
 
   // Switch preset dropdown to Custom and show the W/H fields
-  syncDropdownSelection("slide-size-preset", "slide-size-preset-inline", "custom");
+  syncDropdownSelection("slide-size-preset", "slide-size-preset-inline", CUSTOM_PRESET_SENTINEL);
   const slideCustomFields = document.getElementById("slide-custom-fields");
   if (slideCustomFields) slideCustomFields.classList.remove("hidden");
 
@@ -1564,7 +2903,7 @@ async function autoCalculateAndCreateSlide() {
   setFieldValue("slide-custom-w", wStr);
   setFieldValue("slide-custom-h", hStr);
 
-  setStatus(`Image detected: ${picW}×${picH} px → each slide: ${wStr}×${hStr} px`, "success");
+  setStatus(`Image detected: ${picW}Ã—${picH} px â†’ each slide: ${wStr}Ã—${hStr} px`, "success");
 
   const slideCountLabel = slideCount === 1 ? "slide" : "slides";
   setStatus(`Calculated ${wStr}x${hStr} px for each ${slideCountLabel}. Tap Create Slides to build them.`, "success");
@@ -1578,85 +2917,63 @@ async function organizeLayersIntoSlides() {
     return;
   }
 
-  const { slideW } = getSlideInputs();
+  const { slideW, slideCount } = getSlideInputs();
   const docWidth = Number(doc.width);
-  // Auto-detect the actual number of slides present on the canvas
-  const activeSlideCount = Math.max(1, Math.round(docWidth / slideW));
+  const docHeight = Number(doc.height);
+  const artboardInfos = await getAllArtboardInfos(doc);
+  const usableArtboardInfos = sortSlideRegions(
+    artboardInfos.filter((item) => item && item.bounds && !isEmptyBounds(item.bounds))
+  );
 
-  if (activeSlideCount <= 1) {
-    showError("Organization failed", new Error("Your current document canvas is not wide enough to be sliced into multiple slides based on your Slide Setup width."));
+  const useArtboardRegions = usableArtboardInfos.length > 1 || (usableArtboardInfos.length === 1 && slideCount === 1);
+  const slideRegionCount = useArtboardRegions
+    ? usableArtboardInfos.length
+    : Math.max(1, Math.round(docWidth / slideW));
+  const actualSlideCount = useArtboardRegions
+    ? slideRegionCount
+    : Math.max(1, Math.min(slideCount, slideRegionCount));
+  const slideRegions = useArtboardRegions
+    ? usableArtboardInfos.slice(0, actualSlideCount).map((item, idx) => ({
+        index: idx + 1,
+        left: item.bounds.left,
+        right: item.bounds.right,
+        top: item.bounds.top,
+        bottom: item.bounds.bottom,
+      }))
+    : buildCanvasSlideRegions(docWidth, docHeight, actualSlideCount);
+
+  const artboardIdSet = new Set(usableArtboardInfos.map((item) => item.id).filter((id) => id !== null));
+
+  if (slideRegions.length <= 1) {
+    showError("Organization failed", new Error("Your current document does not contain enough slide regions to organize into multiple folders."));
     return;
   }
 
-  // The exact physical width of each slide slice
-  const sliceW = docWidth / activeSlideCount;
-  setStatus(`Organizing layers into ${activeSlideCount} slide groups...`, "working");
+  setStatus(`Organizing layers into ${actualSlideCount} slide folders...`, "working");
 
   try {
     await core.executeAsModal(async () => {
-      const rootLayers = Array.from(doc.layers || []);
-      const slideBaskets = {}; // slideIdx -> [layerId]
+      const slideBaskets = new Map(); // slideIdx -> [layerId]
 
-      function processLayer(layer) {
-        if (layer.isBackgroundLayer) return;
-        if (layer.kind === constants.LayerKind.GROUP && layer.name.match(/^Slide \d+/i)) return; // Skip existing Slide groups
-
-        let bounds = null;
-        try {
-          bounds = getArtboardLikeBounds(layer);
-        } catch (e) { }
-
-        if (!bounds) {
-          // Empty or invalid bounds on a group? Trace its children.
-          if (layer.kind === constants.LayerKind.GROUP && layer.layers) {
-            Array.from(layer.layers).forEach(child => processLayer(child));
-          }
-          return;
-        }
-
-        const l = bounds.left;
-        const r = bounds.right;
-        const docW = r - l;
-
-        if (l === 0 && r === 0 && Math.round(bounds.bottom - bounds.top) === 0) return;
-
-        // Intelligent Nesting: If a group spans wildly across multiple slides, we shatter it 
-        // to assign its children distinctly to different slides.
-        if (layer.kind === constants.LayerKind.GROUP && layer.layers && layer.layers.length > 0) {
-          if (docW > sliceW * 1.05) {
-            Array.from(layer.layers).forEach(child => processLayer(child));
-            return;
-          }
-        }
-
-        // Assign to Slide
-        const centerX = (l + r) / 2;
-        let sIdx = Math.floor(centerX / sliceW) + 1;
-        if (sIdx < 1) sIdx = 1;
-        if (sIdx > activeSlideCount) sIdx = activeSlideCount;
-
-        if (!slideBaskets[sIdx]) slideBaskets[sIdx] = [];
-        slideBaskets[sIdx].push(toNumberId(layer.id));
-      }
-
-      // Seed processing
-      for (const layer of rootLayers) {
-        processLayer(layer);
+      for (const layer of doc.layers || []) {
+        mergeSlideAssignments(slideBaskets, collectSlideAssignments(layer, slideRegions, artboardIdSet));
       }
 
       const colors = ["red", "orange", "yellowColor", "green", "blue", "violet", "gray"];
-      const slideIndices = Object.keys(slideBaskets).map(Number).sort((a, b) => a - b);
+      const slideIndices = Array.from(slideBaskets.keys()).sort((a, b) => a - b);
 
       for (const sIdx of slideIndices) {
-        const ids = slideBaskets[sIdx];
+        const ids = Array.from(new Set((slideBaskets.get(sIdx) || []).filter((id) => id !== null)));
         if (ids.length === 0) continue;
 
+        // Select layers for this slide
         await action.batchPlay([{
           _obj: "select",
           _target: ids.map(id => ({ _ref: "layer", _id: id })),
           makeVisible: false
         }], { synchronousExecution: true });
 
+        // Group selected layers into a new folder
         await action.batchPlay([{
           _obj: "make",
           _target: [{ _ref: "layerSection" }],
@@ -1664,6 +2981,7 @@ async function organizeLayersIntoSlides() {
           name: `Slide ${sIdx}`
         }], { synchronousExecution: true });
 
+        // Assign matching label color
         const colorValue = colors[(sIdx - 1) % colors.length];
         await action.batchPlay([{
           _obj: "set",
@@ -1675,7 +2993,7 @@ async function organizeLayersIntoSlides() {
     }, { commandName: "Organize Layers into Slides" });
 
     if (typeof refreshLayerList === "function") refreshLayerList();
-    setStatus("Layers successfully grouped and colored by slide!", "success");
+    setStatus("Layers grouped into slide folders without moving their positions!", "success");
 
   } catch (e) {
     showError("Organize failed", e);
@@ -1744,10 +3062,11 @@ const BUTTON_DEFS = {
   "btn-width": { title: "Fit Height", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/><line x1="3" y1="12" x2="21" y2="12"/><polyline points="7 8 3 12 7 16"/><polyline points="17 8 21 12 17 16"/></svg>` },
   "btn-both": { title: "Fit Width", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><polyline points="7 7 2 12 7 17"/><polyline points="17 7 22 12 17 17"/><line x1="2" y1="5" x2="2" y2="19"/><line x1="22" y1="5" x2="22" y2="19"/></svg>` },
   "btn-stretch-all": { title: "Stretch to Fill", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 3 3 9 5"/><polyline points="15 5 21 3 19 9"/><polyline points="5 15 3 21 9 19"/><polyline points="19 15 21 21 15 19"/><line x1="3" y1="3" x2="10" y2="10"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/><line x1="21" y1="21" x2="14" y2="14"/></svg>` },
-  "btn-rotate-left": { title: "Rotate 90° CCW", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>` },
-  "btn-rotate-right": { title: "Rotate 90° CW", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-4.95"/></svg>` },
+  "btn-rotate-left": { title: "Rotate 90Â° CCW", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>` },
+  "btn-rotate-right": { title: "Rotate 90Â° CW", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-4.95"/></svg>` },
   "btn-smart-object": { title: "Convert to Smart Objects", variant: "smart-object", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="8" y="8" width="8" height="8"/><line x1="3" y1="3" x2="8" y2="8"/><line x1="21" y1="3" x2="16" y2="8"/><line x1="3" y1="21" x2="8" y2="16"/><line x1="21" y1="21" x2="16" y2="16"/></svg>` },
   "btn-smart-merge": { title: "Merge all into ONE Smart Object", variant: "smart-merge", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="8" height="8" rx="1"/><path d="M10 6h4M6 10v4M18 10v4M10 18h4"/></svg>` },
+  "btn-convert-layers": { title: "Convert to Layers", isPill: true, pillLabel: "Convert to Layers", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="6" rx="1.2"/><rect x="14" y="4" width="7" height="6" rx="1.2"/><rect x="3" y="14" width="7" height="6" rx="1.2"/><rect x="14" y="14" width="7" height="6" rx="1.2"/><path d="M10 7h4M10 17h4M12 10v4" stroke-linecap="round"/></svg>` },
   "btn-place-embed": { title: "Place Embedded", variant: "place-embed", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>` },
   "btn-new-layer": { title: "New Layer", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>` },
   "btn-rasterize": { title: "Rasterize Layer", variant: "rasterize", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="8" rx="1.5"/><path d="M15 5h2M19 5h.01M15 9h.01M19 9h2M15 13h2M19 13h.01M15 17h.01M19 17h2"/><path d="M11 8l4 4"/></svg>` },
@@ -1766,7 +3085,7 @@ const BUTTON_DEFS = {
 };
 
 const DEFAULT_LAYOUT = [
-  [{ id: "g-transform", name: "Transform", buttons: ["btn-width", "btn-both", "btn-stretch-all", "btn-rotate-left", "btn-rotate-right", "btn-smart-object", "btn-smart-merge", "btn-place-embed", "btn-new-layer"] }],
+  [{ id: "g-transform", name: "Transform", buttons: ["btn-width", "btn-both", "btn-stretch-all", "btn-rotate-left", "btn-rotate-right", "btn-smart-object", "btn-smart-merge", "btn-convert-layers", "btn-place-embed", "btn-new-layer"] }],
   [{ id: "g-align", name: "Align", buttons: ["btn-align-left", "btn-align-h-center", "btn-align-right", "btn-align-top", "btn-align-v-center", "btn-align-bottom"] }],
   [{ id: "g-flip", name: "Flip", buttons: ["btn-distribute-h", "btn-distribute-v"] },
   { id: "g-actions", name: "Actions", buttons: ["btn-visibility", "btn-invert", "btn-delete", "btn-rasterize"] },
@@ -1786,6 +3105,7 @@ let autoSaveDurationMinutes = null;
 let preferredAutoSaveMinutes = 5;
 let autoSaveLastPulseSecond = null;
 const DEFAULT_HEADER_TITLE = "Slide Creator";
+const AUTO_SAVE_OFF_HEADER_TITLE = "Auto Save Off - Turn It On";
 
 function cloneDefaultLayout() {
   return JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
@@ -1812,6 +3132,32 @@ function ensureRasterizeButton(layoutState) {
   layoutState[layoutState.length - 1].push(defaultActionsGroup);
 }
 
+function ensureConvertToLayersButton(layoutState) {
+  const alreadyPresent = layoutState.some((row) =>
+    row.some((group) => (group.buttons || []).includes("btn-convert-layers"))
+  );
+  if (alreadyPresent) return;
+
+  const transformGroup = layoutState.flat().find((group) => group.id === "g-transform");
+  if (transformGroup) {
+    const afterSmartMerge = transformGroup.buttons.indexOf("btn-smart-merge");
+    const beforePlaceEmbed = transformGroup.buttons.indexOf("btn-place-embed");
+    const insertAt = afterSmartMerge !== -1
+      ? afterSmartMerge + 1
+      : beforePlaceEmbed !== -1
+        ? beforePlaceEmbed
+        : transformGroup.buttons.length;
+    transformGroup.buttons.splice(insertAt, 0, "btn-convert-layers");
+    return;
+  }
+
+  const defaultTransformGroup = cloneDefaultLayout().flat().find((group) => group.id === "g-transform");
+  if (!defaultTransformGroup) return;
+
+  if (layoutState.length === 0) layoutState.push([]);
+  layoutState[layoutState.length - 1].push(defaultTransformGroup);
+}
+
 function clearAutoSaveTimerState() {
   if (autoSaveIntervalId) {
     window.clearInterval(autoSaveIntervalId);
@@ -1822,10 +3168,17 @@ function clearAutoSaveTimerState() {
   autoSaveEndsAt = 0;
   autoSaveDurationMinutes = null;
   autoSaveLastPulseSecond = null;
+  updateAutoSaveHeaderState(false);
+}
+
+function updateAutoSaveHeaderState(hasActiveTimer) {
   const headerBrand = document.querySelector(".header-brand");
-  if (headerBrand) headerBrand.classList.remove("auto-save-pulse");
   const headerTitle = document.querySelector(".header-title");
-  if (headerTitle) headerTitle.textContent = DEFAULT_HEADER_TITLE;
+  if (!headerBrand || !headerTitle) return;
+
+  headerBrand.classList.remove("auto-save-pulse");
+  headerBrand.classList.toggle("auto-save-warning", !hasActiveTimer);
+  headerTitle.textContent = hasActiveTimer ? DEFAULT_HEADER_TITLE : AUTO_SAVE_OFF_HEADER_TITLE;
 }
 
 function loadPreferredAutoSaveMinutes() {
@@ -1854,12 +3207,16 @@ function triggerAutoSavePulse(remainingSeconds) {
   const headerBrand = document.querySelector(".header-brand");
   const headerTitle = document.querySelector(".header-title");
   if (!headerBrand) return;
+  headerBrand.classList.remove("auto-save-warning");
   if (headerTitle) headerTitle.textContent = `Saving in ${remainingSeconds}`;
   headerBrand.classList.remove("auto-save-pulse");
   void headerBrand.offsetWidth;
   headerBrand.classList.add("auto-save-pulse");
   window.setTimeout(() => {
     headerBrand.classList.remove("auto-save-pulse");
+    if (autoSaveTargetDocId && autoSaveEndsAt > Date.now() && headerTitle) {
+      headerTitle.textContent = DEFAULT_HEADER_TITLE;
+    }
   }, 820);
 }
 
@@ -1882,10 +3239,12 @@ function updateAutoSaveTimerUI() {
   if (!status) return;
 
   if (!hasActiveTimer) {
+    updateAutoSaveHeaderState(false);
     status.textContent = `Default timer: ${preferredAutoSaveMinutes} min. Pick 3, 5, or 10 minutes to start a repeating auto-save loop for the active document.`;
     return;
   }
 
+  updateAutoSaveHeaderState(true);
   const remaining = formatAutoSaveRemaining(autoSaveEndsAt - Date.now());
   status.textContent = `Looping save for "${autoSaveTargetDocTitle}" in ${remaining}. The last 5 seconds pulse green before each save.`;
 }
@@ -2009,8 +3368,9 @@ function loadLayout() {
             .filter(g => g.id)
         );
         ensureRasterizeButton(layout);
+        ensureConvertToLayersButton(layout);
         const allSaved = layout.flat().flatMap(g => g.buttons);
-        const newBtns = Object.keys(BUTTON_DEFS).filter(id => !allSaved.includes(id) && id !== "btn-rasterize");
+        const newBtns = Object.keys(BUTTON_DEFS).filter(id => !allSaved.includes(id) && id !== "btn-rasterize" && id !== "btn-convert-layers");
         if (newBtns.length) layout[0][0].buttons.push(...newBtns);
         return;
       }
@@ -2069,7 +3429,7 @@ function renderLayout() {
     root.appendChild(rowEl);
   });
 
-  // ── Full-width JPG export button pinned at the bottom ──
+  // â”€â”€ Full-width JPG export button pinned at the bottom â”€â”€
   const jpgSpacer = document.createElement("div");
   jpgSpacer.className = "tools-bottom-spacer";
   root.appendChild(jpgSpacer);
@@ -2092,7 +3452,7 @@ function renderLayout() {
   jpgBtn.addEventListener("click", () => showJpgFilenamePrompt(root));
   root.appendChild(jpgBtn);
 
-  // ── PNG Export button ──
+  // â”€â”€ PNG Export button â”€â”€
   const pngBtn = document.createElement("div");
   pngBtn.className = "tools-png-btn";
   pngBtn.innerHTML = `
@@ -2108,7 +3468,7 @@ function renderLayout() {
   pngBtn.addEventListener("click", () => exportAllLayersAsImages("png"));
   root.appendChild(pngBtn);
 
-  // ── Export All Layers button ──
+  // â”€â”€ Export All Layers button â”€â”€
   const exportAllBtn = document.createElement("div");
   exportAllBtn.className = "tools-export-all-btn";
   exportAllBtn.innerHTML = `
@@ -2151,7 +3511,7 @@ function showJpgFilenamePrompt(root) {
 
   const cancelBtn = document.createElement("div");
   cancelBtn.className = "jpg-prompt-cancel";
-  cancelBtn.textContent = "✕";
+  cancelBtn.textContent = "âœ•";
 
   wrap.appendChild(input);
   wrap.appendChild(saveBtn);
@@ -2415,6 +3775,7 @@ function fireAction(id) {
     "btn-visibility": toggleVisibility,
     "btn-invert": invertColors,
     "btn-rasterize": rasterizeSelectedLayers,
+    "btn-convert-layers": convertToLayers,
     "btn-smart-object": convertToSmartObject,
     "btn-smart-merge": convertToSmartObjectMerged,
     "btn-new-layer": createNewLayer,
@@ -2445,7 +3806,7 @@ function wireActions() {
   });
 }
 
-// ─── Photoshop DOM / Actions Execute Commands ─────────────────────────────
+// â”€â”€â”€ Photoshop DOM / Actions Execute Commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function invertColors() {
   await core.executeAsModal(async () => {
     const doc = app.activeDocument; if (!doc) return;
@@ -2479,6 +3840,34 @@ async function rasterizeSelectedLayers() {
     if (typeof refreshLayerList === "function") refreshLayerList();
   } catch (e) {
     showError("Rasterize failed", e);
+  }
+}
+
+async function convertToLayers() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    showError("Convert to Layers failed", new Error("No active document."));
+    return;
+  }
+
+  const layers = Array.from(doc.activeLayers || []);
+  if (layers.length === 0) {
+    showError("Convert to Layers failed", new Error("No layers selected."));
+    return;
+  }
+
+  setStatus("Converting smart object to layers...", "working");
+  try {
+    await core.executeAsModal(async () => {
+      await action.batchPlay([{
+        _obj: "placedLayerConvertToLayers",
+        _options: { dialogOptions: "dontDisplay" },
+      }], { synchronousExecution: true });
+    }, { commandName: "Convert to Layers" });
+    setStatus("Converted smart object to layers.", "success");
+    if (typeof refreshLayerList === "function") refreshLayerList();
+  } catch (e) {
+    showError("Convert to Layers failed", e);
   }
 }
 
@@ -2580,7 +3969,7 @@ async function rotateLayer(degrees) {
       await action.batchPlay([{ _obj: "select", _target: [{ _ref: "layer", _id: layer.id }], makeVisible: false, _options: { dialogOptions: "dontDisplay" } }], {});
       await action.batchPlay([{ _obj: "transform", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }], freeTransformCenterState: { _enum: "quadCenterState", _value: "QCSAverage" }, offset: { _obj: "offset", horizontal: { _unit: "pixelsUnit", _value: 0 }, vertical: { _unit: "pixelsUnit", _value: 0 } }, angle: { _unit: "angleUnit", _value: degrees }, _options: { dialogOptions: "dontDisplay" } }], {});
     }
-  }, { commandName: `Rotate ${degrees > 0 ? "Right" : "Left"} 90°` });
+  }, { commandName: `Rotate ${degrees > 0 ? "Right" : "Left"} 90Â°` });
 }
 
 async function flipLayer(direction) {
@@ -2922,7 +4311,7 @@ const initializeAutoResize = () => {
 };
 
 /* initNavigationTabs replaced by initTabs with pointerdown logic */
-// ─── Layers Organization Tab Logic ───────────────────────────────
+// â”€â”€â”€ Layers Organization Tab Logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let selectedColor = "red";
 let selectedLayerIds = new Set();
@@ -3028,7 +4417,7 @@ async function getLayerLabelRobust(id) {
   return "none";
 }
 
-// ── Flat layer list via batchPlay (guaranteed to work in all UXP versions) ──
+// â”€â”€ Flat layer list via batchPlay (guaranteed to work in all UXP versions) â”€â”€
 async function getAllLayersViaBatchPlay() {
   try {
     const result = await action.batchPlay([{
@@ -3205,7 +4594,7 @@ async function refreshLayerList(query = "") {
   }
 }
 
-// Map PS color label → hex for the color dot
+// Map PS color label â†’ hex for the color dot
 function colorLabelToHex(label) {
   const map = {
     "red": "#f24e4e", "orange": "#f28c4e", "yellowcolor": "#f2d44e",
@@ -3522,3 +4911,8 @@ document.addEventListener("DOMContentLoaded", () => {
         observer.observe(scrollArea, { childList: true, subtree: true, attributes: true });
     }
 });
+
+
+
+
+
