@@ -29,7 +29,8 @@ body {
 
 body {
     background:
-        radial-gradient(circle at top, rgba(91, 155, 240, 0.14), transparent 34%),
+        radial-gradient(circle at top left, rgba(91, 155, 240, 0.16), transparent 45%),
+        radial-gradient(circle at bottom right, rgba(160, 107, 245, 0.12), transparent 45%),
         var(--bg-color);
     color: var(--text-color);
     font-family:
@@ -145,7 +146,7 @@ input[type="number"] {
     width: 32px;
     height: 32px;
     margin-right: 12px;
-    border-radius: 0px;
+    border-radius: 8px;
     background: linear-gradient(135deg, rgba(91, 155, 240, 0.25), rgba(47, 125, 246, 0.5));
     color: #dbe9ff;
     font-size: 11px;
@@ -246,7 +247,7 @@ input[type="number"] {
     padding: 3px 4px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0px;
+    border-radius: 8px;
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.04),
         0 2px 8px rgba(0, 0, 0, 0.12);
@@ -269,7 +270,7 @@ input[type="number"] {
     justify-content: center;
     background: transparent;
     border: none;
-    border-radius: 0px;
+    border-radius: 8px;
     color: #a8a8a8;
     cursor: pointer;
     position: relative;
@@ -311,7 +312,7 @@ input[type="number"] {
     bottom: 2px;
     width: 10px;
     height: 2px;
-    border-radius: 0px;
+    border-radius: 8px;
     background: #5b9bf0;
     box-shadow: 0 0 5px rgba(91, 155, 240, 0.55);
     transform: translateX(-50%) scaleX(0);
@@ -337,7 +338,7 @@ input[type="number"] {
 .history-shell {
     background: rgba(255, 255, 255, 0.035);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0px;
+    border-radius: 8px;
     padding: 14px;
     box-shadow: 
         inset 0 1px 0 rgba(255, 255, 255, 0.04),
@@ -370,15 +371,15 @@ input[type="number"] {
 
 /* ── Icon tab bar ──────────────────────────────────────────────────── */
 .tab-shell {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0px;
-    padding: 5px 8px;
+    background: rgba(30, 30, 30, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 6px 8px;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.04),
-        0 2px 8px rgba(0, 0, 0, 0.12);
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 6px 16px rgba(0, 0, 0, 0.2);
     width: 100%;
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(16px);
 }
 
 .tab-icon-bar {
@@ -406,7 +407,7 @@ input[type="number"] {
     justify-content: center;
     background: transparent;
     border: none;
-    border-radius: 0px;
+    border-radius: 8px;
     cursor: pointer;
     position: relative;
     color: #999999;
@@ -514,7 +515,7 @@ input[type="number"] {
     transform: translateX(-50%);
     width: 14px;
     height: 2px;
-    border-radius: 0px;
+    border-radius: 8px;
 }
 .tab-icon-btn[data-tab-button="artboard"].active::after { background: #5b9bf0; box-shadow: 0 0 5px #5b9bf0; }
 .tab-icon-btn[data-tab-button="slide"].active::after    { background: #a06bf5; box-shadow: 0 0 5px #a06bf5; }
@@ -560,12 +561,13 @@ input[type="number"] {
     display: flex;
     flex-direction: column;
     padding: 18px;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid var(--card-border);
     overflow: hidden;
     background-clip: padding-box;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.035));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025));
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 
 .card > * { margin-bottom: 12px; }
@@ -666,9 +668,9 @@ sp-textfield, sp-dropdown, .native-select {
 
     /* Consistent modern corner radii */
     --spectrum-alias-border-radius-regular: 6px;
-    --spectrum-textfield-m-border-radius: 0px;
-    --spectrum-dropdown-m-border-radius: 0px;
-    --spectrum-dropdown-border-radius: 0px;
+    --spectrum-textfield-m-border-radius: 8px;
+    --spectrum-dropdown-m-border-radius: 8px;
+    --spectrum-dropdown-border-radius: 8px;
 
     /* Text Crispness */
     --spectrum-alias-text-color: #ebebeb;
@@ -865,7 +867,7 @@ sp-menu-item.preset-menu-item:focus-visible {
 .canvas-hint {
     background: rgba(91, 155, 240, 0.1);
     border: 1px solid rgba(91, 155, 240, 0.2);
-    border-radius: 0px;
+    border-radius: 8px;
     padding: 10px 12px;
     font-size: 11px;
     line-height: 1.45;
@@ -932,7 +934,7 @@ sp-menu-item.preset-menu-item:focus-visible {
 .step-badge {
     width: 18px;
     height: 18px;
-    border-radius: 0px;
+    border-radius: 8px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -975,7 +977,7 @@ sp-menu-item.preset-menu-item:focus-visible {
     align-items: center;
     justify-content: center;
     padding: 8px 10px;
-    border-radius: 0px;
+    border-radius: 8px;
     background: var(--card-bg);
     color: var(--text-muted);
     font-size: 11px;
@@ -1003,7 +1005,7 @@ sp-menu-item.preset-menu-item:focus-visible {
 .error-log {
     max-height: 100px;
     overflow-y: auto;
-    border-radius: 0px;
+    border-radius: 8px;
     padding: 8px;
     background: rgba(231, 76, 60, 0.1);
     border: 1px solid rgba(231, 76, 60, 0.3);
@@ -1015,7 +1017,7 @@ sp-menu-item.preset-menu-item:focus-visible {
 
 .delete-slides-container {
     border: 1px solid var(--card-border);
-    border-radius: 0px;
+    border-radius: 8px;
     padding: var(--spacing-s);
     max-height: 180px;
     overflow-y: auto;
@@ -1053,7 +1055,7 @@ sp-menu-item.preset-menu-item:focus-visible {
     align-items: center;
     gap: var(--spacing-s);
     padding: 6px;
-    border-radius: 0px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.03);
 }
 
@@ -1094,7 +1096,7 @@ sp-menu-item.preset-menu-item:focus-visible {
 
 #panel-root.auto-resize-root::-webkit-scrollbar { width: 8px; }
 #panel-root.auto-resize-root::-webkit-scrollbar-track { background: #1a1a1a; }
-#panel-root.auto-resize-root::-webkit-scrollbar-thumb { background: #6b5a9f; border-radius: 0px; }
+#panel-root.auto-resize-root::-webkit-scrollbar-thumb { background: #6b5a9f; border-radius: 8px; }
 #panel-root.auto-resize-root::-webkit-scrollbar-thumb:hover { background: #8a78bf; }
 
 .panel-topbar {
@@ -1111,7 +1113,7 @@ sp-menu-item.preset-menu-item:focus-visible {
     font-size: 10px;
     color: #7b7b7b;
     padding: 2px 7px;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid #2d2d2d;
     background: #171717;
     cursor: pointer;
@@ -1127,34 +1129,34 @@ sp-menu-item.preset-menu-item:focus-visible {
 
 .row-drop-divider { position: relative; height: 6px; display: flex; align-items: center; margin: 1px 0; cursor: default; }
 .row-divider-line { width: 100%; height: 1px; background: #2a2a2a; pointer-events: none; }
-.row-drop-divider.row-drop-active .row-divider-line { height: 3px; background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.6); border-radius: 0px; }
+.row-drop-divider.row-drop-active .row-divider-line { height: 3px; background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.6); border-radius: 8px; }
 
-.side-drop-zone { width: 8px; min-height: 40px; flex-shrink: 0; border-radius: 0px; background: transparent; transition: background 0.1s, width 0.15s; position: relative; }
+.side-drop-zone { width: 8px; min-height: 40px; flex-shrink: 0; border-radius: 8px; background: transparent; transition: background 0.1s, width 0.15s; position: relative; }
 .side-drop-zone::after { content: ""; position: absolute; top: 4px; bottom: 4px; left: 50%; transform: translateX(-50%); width: 1px; background: #2a2a2a; }
 .side-drop-zone.side-drop-active { width: 14px; background: rgba(245,166,35,0.12); }
-.side-drop-zone.side-drop-active::after { width: 3px; background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.6); border-radius: 0px; }
+.side-drop-zone.side-drop-active::after { width: 3px; background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.6); border-radius: 8px; }
 
-.group-grip { display: flex; flex-wrap: wrap; gap: 2px; width: 14px; padding: 3px 2px 2px 2px; cursor: grab; align-self: flex-start; border-radius: 0px; transition: opacity 0.15s; opacity: 0.25; }
+.group-grip { display: flex; flex-wrap: wrap; gap: 2px; width: 14px; padding: 3px 2px 2px 2px; cursor: grab; align-self: flex-start; border-radius: 8px; transition: opacity 0.15s; opacity: 0.25; }
 .group-grip:hover  { opacity: 0.7; }
 .group-grip:active { cursor: grabbing; }
 body:not(.layout-edit-mode) .group-grip { opacity: 0; pointer-events: none; }
 body.layout-edit-mode .group-grip { opacity: 0.65; pointer-events: auto; }
-.group-grip span { display: block; width: 3px; height: 3px; border-radius: 0px; background: #aaa; pointer-events: none; }
+.group-grip span { display: block; width: 3px; height: 3px; border-radius: 8px; background: #aaa; pointer-events: none; }
 .group-grip.grip-ready span { background: #f5a623; }
 .group-grip.grip-ready { opacity: 1; }
 
-.group { display: flex; flex-direction: row; align-items: flex-start; flex: 1; min-width: 0; padding: 2px; border-radius: 0px; transition: background 0.1s; }
+.group { display: flex; flex-direction: row; align-items: flex-start; flex: 1; min-width: 0; padding: 2px; border-radius: 8px; transition: background 0.1s; }
 .group > * { margin-right: 2px; }
 .group > *:last-child { margin-right: 0; }
 .group.group-drop-target { background: rgba(245, 166, 35, 0.07); outline: 1px dashed #f5a623; }
 
-.group-buttons { display: flex; flex-wrap: wrap; min-height: 38px; padding: 2px; border-radius: 0px; transition: background 0.1s; }
+.group-buttons { display: flex; flex-wrap: wrap; min-height: 38px; padding: 2px; border-radius: 8px; transition: background 0.1s; }
 .group-buttons > * { margin: 2px 3px 3px 0; }
 .group-buttons.drag-over { background: rgba(107,90,159,0.08); outline: 1px dashed #b8a7d9; }
 
 .icon-button {
     background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-    width: 44px; height: 38px; border-radius: 0px;
+    width: 44px; height: 38px; border-radius: 8px;
     display: flex; justify-content: center; align-items: center; cursor: pointer;
     border: 1px solid rgba(255,255,255,0.1);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.15);
@@ -1203,7 +1205,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .pill-group {
     display: flex;
     background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.1);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.15);
     overflow: hidden; height: 38px; flex-shrink: 0;
@@ -1247,7 +1249,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     gap: 10px;
     width: 100%;
     padding: 14px;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid rgba(111, 170, 255, 0.18);
     background: linear-gradient(180deg, rgba(66, 118, 204, 0.14), rgba(28, 49, 90, 0.08));
     box-shadow: inset 0 1px 0 rgba(170, 210, 255, 0.08), 0 2px 6px rgba(0, 0, 0, 0.18);
@@ -1288,7 +1290,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     align-items: center;
     justify-content: center;
     padding: 0 6px;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid rgba(142, 194, 255, 0.22);
     background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
     color: #dce9ff;
@@ -1335,7 +1337,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     justify-content: center;
     width: 100%;
     height: 42px;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid rgba(255, 170, 51, 0.25);
     background: linear-gradient(180deg, rgba(255, 160, 40, 0.12), rgba(255, 140, 20, 0.06));
     box-shadow: inset 0 1px 0 rgba(255, 200, 100, 0.1), 0 2px 6px rgba(0,0,0,0.2);
@@ -1391,7 +1393,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     justify-content: center;
     width: 100%;
     height: 38px;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid rgba(78, 205, 196, 0.25);
     background: linear-gradient(180deg, rgba(40, 180, 160, 0.12), rgba(30, 140, 120, 0.06));
     box-shadow: inset 0 1px 0 rgba(100, 220, 200, 0.1), 0 2px 6px rgba(0,0,0,0.2);
@@ -1445,7 +1447,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     justify-content: center;
     width: 100%;
     height: 38px;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid rgba(78, 242, 133, 0.25);
     background: linear-gradient(180deg, rgba(50, 200, 90, 0.12), rgba(40, 160, 70, 0.06));
     box-shadow: inset 0 1px 0 rgba(100, 240, 150, 0.1), 0 2px 6px rgba(0,0,0,0.2);
@@ -1497,7 +1499,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     display: flex;
     align-items: center;
     width: 100%;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 1px solid rgba(255, 170, 51, 0.3);
     background: linear-gradient(180deg, rgba(255, 150, 30, 0.1), rgba(255, 120, 10, 0.05));
     box-shadow: inset 0 1px 0 rgba(255, 200, 100, 0.08), 0 3px 10px rgba(0,0,0,0.25);
@@ -1517,7 +1519,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     padding: 0 10px;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 0px;
+    border-radius: 8px;
     color: #ebebeb;
     font-size: 12px;
     font-family: inherit;
@@ -1533,7 +1535,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .jpg-prompt-save {
     height: 30px;
     padding: 0 12px;
-    border-radius: 0px;
+    border-radius: 8px;
     background: linear-gradient(180deg, rgba(255, 160, 40, 0.3), rgba(255, 130, 10, 0.2));
     border: 1px solid rgba(255, 170, 51, 0.4);
     color: #ffcc77;
@@ -1562,7 +1564,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .jpg-prompt-cancel {
     width: 28px;
     height: 30px;
-    border-radius: 0px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: #888;
@@ -1588,7 +1590,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     height: 180px;
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid var(--card-border);
-    border-radius: 0px;
+    border-radius: 8px;
     overflow-y: auto;
     margin-top: 8px;
     position: relative;
@@ -1597,7 +1599,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 
 .layer-list-scroll::-webkit-scrollbar { width: 6px; }
 .layer-list-scroll::-webkit-scrollbar-track { background: transparent; }
-.layer-list-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 0px; }
+.layer-list-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 8px; }
 .layer-list-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
 .layer-list-inner {
@@ -1660,7 +1662,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
         0 24px 48px -12px rgba(0, 0, 0, 0.5),
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(20px);
-    border-radius: 0px;
+    border-radius: 8px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -1724,7 +1726,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
-    border-radius: 0px;
+    border-radius: 8px;
 }
 
 .modal-close:hover {
@@ -1743,7 +1745,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     display: flex;
     align-items: center;
     padding: 8px 9px;
-    border-radius: 0px;
+    border-radius: 8px;
     margin-bottom: 6px;
     background: rgba(255, 255, 255, 0.03);
     transition: background 0.2s;
@@ -1826,7 +1828,7 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
 .layer-export-actions button {
     flex: 1;
     padding: 8px 9px;
-    border-radius: 0px;
+    border-radius: 8px;
     font-size: 11px;
     font-weight: 700;
     cursor: pointer;
@@ -2109,7 +2111,7 @@ body.export-options-modal-open #export-options-modal * {
     padding: 10px 12px;
     background: rgba(16, 22, 32, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0px;
+    border-radius: 8px;
     cursor: pointer;
     transition: background 0.2s;
 }
@@ -2142,7 +2144,7 @@ body.export-options-modal-open #export-options-modal * {
     padding: 10px 12px;
     background: rgba(6, 10, 16, 0.92);
     border: 1px solid rgba(170, 196, 235, 0.28);
-    border-radius: 0px;
+    border-radius: 8px;
     color: #fff;
     font-size: 13px;
     line-height: 1.2;
@@ -2190,7 +2192,7 @@ body.export-options-modal-open #export-options-modal * {
 .modal-actions button {
     flex: 1;
     padding: 10px 16px;
-    border-radius: 0px;
+    border-radius: 8px;
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
@@ -2272,7 +2274,7 @@ body.preset-modal-open #preset-manager-modal * {
 .preset-manager-editor-card {
     background: rgba(0, 0, 0, 0.15);
     border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 0px;
+    border-radius: 8px;
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -2305,7 +2307,7 @@ body.preset-modal-open #preset-manager-modal * {
     height: 36px;
     background: rgba(0, 0, 0, 0.35);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0px;
+    border-radius: 8px;
     color: #fff;
     padding: 0 12px;
     font-size: 13px;
@@ -2329,7 +2331,7 @@ body.preset-modal-open #preset-manager-modal * {
     flex: 1;
     height: 38px;
     border: none;
-    border-radius: 0px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 12px;
     font-weight: 700;
@@ -2391,7 +2393,7 @@ body.preset-modal-open #preset-manager-modal * {
 
 .preset-manager-list::-webkit-scrollbar { width: 4px; }
 .preset-manager-list::-webkit-scrollbar-track { background: transparent; }
-.preset-manager-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 0px; }
+.preset-manager-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 8px; }
 
 .preset-manager-empty {
     padding: 32px;
@@ -2409,7 +2411,7 @@ body.preset-modal-open #preset-manager-modal * {
     padding: 12px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 0px;
+    border-radius: 8px;
     transition: all 0.2s;
 }
 
@@ -2456,7 +2458,7 @@ body.preset-modal-open #preset-manager-modal * {
     font-weight: 700;
     cursor: pointer;
     transition: all 0.15s;
-    border-radius: 0px;
+    border-radius: 8px;
 }
 
 .preset-manager-item-actions button:hover {
@@ -2533,7 +2535,7 @@ body.preset-modal-open #preset-manager-modal * {
     gap: 8px;
     min-height: 42px;
     padding: 7px 9px;
-    border-radius: 0px;
+    border-radius: 8px;
     cursor: pointer;
     transition: background 0.15s;
     border: 1.5px solid transparent;
@@ -2551,7 +2553,7 @@ body.preset-modal-open #preset-manager-modal * {
 .color-swatch-dot {
     width: 22px;
     height: 22px;
-    border-radius: 0px;
+    border-radius: 8px;
     flex-shrink: 0;
     border: 1.5px solid rgba(255,255,255,0.15);
     box-shadow: 0 0 0 2px rgba(0,0,0,0.3);
@@ -2604,7 +2606,7 @@ body.preset-modal-open #preset-manager-modal * {
 .color-layer-pill {
     display: inline-block;
     padding: 3px 8px;
-    border-radius: 0px;
+    border-radius: 8px;
     font-size: 12px;
     font-weight: 600;
     background: rgba(255,255,255,0.08);
@@ -2641,7 +2643,7 @@ body.preset-modal-open #preset-manager-modal * {
 .color-source-preview {
     width: 38px;
     height: 38px;
-    border-radius: 0px;
+    border-radius: 8px;
     flex-shrink: 0;
     background: rgba(255,255,255,0.06);
     border: 1.5px solid rgba(255,255,255,0.12);
@@ -2675,7 +2677,7 @@ body.preset-modal-open #preset-manager-modal * {
     --wheel-brightness: 1;
     width: 180px;
     height: 180px;
-    border-radius: 0px;
+    border-radius: 8px;
     cursor: crosshair;
     display: block;
     background:
@@ -2701,7 +2703,7 @@ body.preset-modal-open #preset-manager-modal * {
     position: absolute;
     width: 14px;
     height: 14px;
-    border-radius: 0px;
+    border-radius: 8px;
     border: 2.5px solid #fff;
     box-shadow: 0 0 0 1.5px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.5);
     pointer-events: none;
@@ -2738,7 +2740,7 @@ body.preset-modal-open #preset-manager-modal * {
     -webkit-appearance: none;
     appearance: none;
     height: 6px;
-    border-radius: 0px;
+    border-radius: 8px;
     background: rgba(255,255,255,0.12);
     outline: none;
     cursor: pointer;
@@ -2749,7 +2751,7 @@ body.preset-modal-open #preset-manager-modal * {
     appearance: none;
     width: 14px;
     height: 14px;
-    border-radius: 0px;
+    border-radius: 8px;
     background: #fff;
     box-shadow: 0 1px 4px rgba(0,0,0,0.5);
     cursor: pointer;
@@ -2784,7 +2786,7 @@ body.preset-modal-open #preset-manager-modal * {
     display: flex;
     width: 52px;
     height: 36px;
-    border-radius: 0px;
+    border-radius: 8px;
     overflow: hidden;
     flex-shrink: 0;
     border: 1.5px solid rgba(255,255,255,0.12);
@@ -3448,7 +3450,7 @@ body.preset-modal-open #preset-manager-modal * {
     width: 2px;
     min-height: 20px;
     background-color: rgba(255, 255, 255, 0.18);
-    border-radius: 0px;
+    border-radius: 8px;
     transition: width 0.15s ease, background-color 0.15s ease;
 }
 
@@ -3460,9 +3462,9 @@ body.preset-modal-open #preset-manager-modal * {
 /* Flat-edge pass: keep circular controls intact, flatten everything else. */
 :root {
     --spectrum-alias-border-radius-regular: 0px;
-    --spectrum-textfield-m-border-radius: 0px;
-    --spectrum-dropdown-m-border-radius: 0px;
-    --spectrum-dropdown-border-radius: 0px;
+    --spectrum-textfield-m-border-radius: 8px;
+    --spectrum-dropdown-m-border-radius: 8px;
+    --spectrum-dropdown-border-radius: 8px;
 }
 
 #panel-root.auto-resize-root::-webkit-scrollbar-thumb,
@@ -3471,7 +3473,7 @@ body.preset-modal-open #preset-manager-modal * {
 .row-drop-divider.row-drop-active .row-divider-line,
 .side-drop-zone,
 .side-drop-zone.side-drop-active::after {
-    border-radius: 0px;
+    border-radius: 8px;
 }
 
 :root {
