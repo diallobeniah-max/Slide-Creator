@@ -1270,6 +1270,28 @@ function showError(label, err) {
   console.error(label, err);
 }
 
+function runPanelAction(label, actionFn) {
+  try {
+    const result = actionFn();
+    if (result && typeof result.catch === "function") {
+      result.catch((error) => showError(label, error));
+    }
+  } catch (error) {
+    showError(label, error);
+  }
+}
+
+if (typeof window !== "undefined" && !window.__slideCreatorPanelErrorGuard) {
+  window.__slideCreatorPanelErrorGuard = true;
+  window.addEventListener("unhandledrejection", (event) => {
+    if (event && typeof event.preventDefault === "function") event.preventDefault();
+    showError("Action failed", event?.reason || new Error("Unknown action error."));
+  });
+  window.addEventListener("error", (event) => {
+    showError("Action failed", event?.error || event?.message || new Error("Unknown action error."));
+  });
+}
+
 function getDropdownValue(el) {
   if (!el) return "";
   const selected = el.querySelector("sp-menu-item[selected]");
@@ -2157,6 +2179,357 @@ async function exportSlides(forcedFormat) {
   }
 }
 
+// â”€â”€â”€ Export Options Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function showExportOptionsModal() {
+  const existingModal = document.getElementById("export-options-modal");
+  if (existingModal) {
+    existingModal.remove();
+    document.body.classList.remove("export-options-modal-open");
+  }
+
+  if (!Array.isArray(slides) || slides.length === 0) {
+    showError("Export failed", new Error("No cropped slides found. Tap Crop Slides first, then export."));
+    return;
+  }
+
+  const { exportPrefix, exportFormat } = getSlideInputs();
+  const defaultName = sanitizeAssetFileStem(exportPrefix || "slide");
+  const formatLabel = String(exportFormat || "jpg").toUpperCase();
+
+  const modal = document.createElement("div");
+  modal.id = "export-options-modal";
+  modal.className = "modal-overlay";
+  document.body.classList.add("export-options-modal-open");
+
+  const modalContent = document.createElement("div");
+  modalContent.className = "modal-content export-options-modal-content";
+
+  const header = document.createElement("div");
+  header.className = "modal-header";
+  header.innerHTML = `
+    <h3>Export Options</h3>
+    <button class="modal-close" id="close-export-options-modal">&times;</button>
+  `;
+
+  const body = document.createElement("div");
+  body.className = "modal-body";
+
+  const summarySection = document.createElement("div");
+  summarySection.className = "export-scope-section";
+  summarySection.innerHTML = `
+    <label class="field-label">Export</label>
+    <div class="export-scope-options">
+      <div class="export-scope-option export-scope-summary">
+        <span>All ${slides.length} cropped slide${slides.length === 1 ? "" : "s"} as ${formatLabel}</span>
+      </div>
+    </div>
+  `;
+
+  const nameSection = document.createElement("div");
+  nameSection.className = "export-name-section";
+  nameSection.innerHTML = `
+    <label class="field-label">Export Name</label>
+    <input type="text" id="export-name-input" class="export-name-input" placeholder="Enter export name..." value="${defaultName}">
+  `;
+
+  const zipSection = document.createElement("label");
+  zipSection.className = "export-zip-option";
+  zipSection.innerHTML = `
+    <input type="checkbox" id="export-slides-zip">
+    <span>Zip exported slides</span>
+  `;
+
+  const actions = document.createElement("div");
+  actions.className = "modal-actions";
+  actions.innerHTML = `
+    <button class="btn-cancel" id="btn-cancel-export">Cancel</button>
+    <button class="btn-confirm" id="btn-confirm-export">Export</button>
+  `;
+
+  body.appendChild(summarySection);
+  body.appendChild(nameSection);
+  body.appendChild(zipSection);
+
+  modalContent.appendChild(header);
+  modalContent.appendChild(body);
+  modalContent.appendChild(actions);
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
+
+  const closeModal = () => {
+    document.body.classList.remove("export-options-modal-open");
+    modal.remove();
+  };
+
+  document.getElementById("close-export-options-modal").addEventListener("click", closeModal);
+  document.getElementById("btn-cancel-export").addEventListener("click", closeModal);
+
+  document.getElementById("btn-confirm-export").addEventListener("click", async () => {
+    try {
+      const confirmButton = document.getElementById("btn-confirm-export");
+      const exportName = sanitizeAssetFileStem(document.getElementById("export-name-input").value.trim() || defaultName);
+      const shouldZip = Boolean(document.getElementById("export-slides-zip")?.checked);
+      if (confirmButton) confirmButton.disabled = true;
+      closeModal();
+      await exportSlidesWithName(exportName, exportFormat, getSlideInputs().exportQuality, shouldZip);
+    } catch (error) {
+      document.body.classList.remove("export-options-modal-open");
+      showError("Export failed", error);
+    }
+  });
+}
+
+async function exportWithOptions(exportScope, exportName) {
+  const { exportFormat, exportQuality } = getSlideInputs();
+  const doJpg = exportFormat === "jpg";
+  const ext = doJpg ? "jpg" : "png";
+
+  if (exportScope === "all") {
+    await exportSlidesWithName(exportName, exportFormat, exportQuality);
+  } else {
+    await exportSelectedLayersWithName(exportName, exportFormat, exportQuality);
+  }
+}
+
+async function createUniqueFolder(parentFolder, baseName) {
+  const safeBaseName = sanitizeAssetFileStem(baseName || "export");
+  for (let index = 0; index < 100; index++) {
+    const folderName = index === 0 ? safeBaseName : `${safeBaseName}_${index + 1}`;
+    try {
+      return await parentFolder.createEntry(folderName, { type: "folder" });
+    } catch (_) { }
+  }
+  throw new Error("Could not create export folder.");
+}
+
+async function createSlidesZip(folderEntry, zipName, exportedFiles) {
+  const ZipCtor = (typeof JSZip !== "undefined" && JSZip) || (typeof window !== "undefined" && window.JSZip);
+  if (!ZipCtor) throw new Error("ZIP support is not available.");
+
+  const zip = new ZipCtor();
+  for (const fileInfo of exportedFiles) {
+    const binary = await fileInfo.entry.read({ format: uxpFormats.binary });
+    zip.file(fileInfo.name, binary);
+  }
+
+  const zipBinary = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  const zipFile = await folderEntry.createFile(`${sanitizeAssetFileStem(zipName)}.zip`, { overwrite: true });
+  await zipFile.write(zipBinary, { format: uxpFormats.binary });
+  return zipFile;
+}
+
+async function cleanupExportEntries(entries) {
+  for (const entry of entries) {
+    try {
+      if (entry && typeof entry.delete === "function") await entry.delete();
+    } catch (_) { }
+  }
+}
+
+async function exportSlidesWithName(customName, format, quality, zipOutput = false) {
+  if (slides.length === 0) {
+    showError("Export failed", new Error("No slides — tap Crop Slides first."));
+    return;
+  }
+
+  const doJpg = format === "jpg";
+  const ext = doJpg ? "jpg" : "png";
+  const count = slides.length;
+  const exportStem = sanitizeAssetFileStem(customName || "slide");
+
+  setStatus(zipOutput ? "Choose folder to save ZIP..." : "Choose folder to save slides...", "working");
+  let folderEntry;
+  try {
+    folderEntry = await uxpFs.getFolder();
+    if (!folderEntry) { setStatus("Export cancelled.", ""); return; }
+  } catch (e) {
+    showError("Folder selection failed", e);
+    return;
+  }
+
+  try {
+    const outputFolder = zipOutput
+      ? await createUniqueFolder(await uxpFs.getDataFolder(), `slide_export_${Date.now()}`)
+      : folderEntry;
+    const exportedFiles = [];
+
+    await core.executeAsModal(async () => {
+      for (let i = 0; i < count; i++) {
+        const slide = slides[i];
+        const num = i + 1;
+        const baseFileName = `${exportStem}_${String(num).padStart(2, "0")}`;
+        let fileName = baseFileName;
+        let suffix = 1;
+        const slideDoc = app.documents.find(d => d.id === slide.id);
+        if (!slideDoc) throw new Error(`Slide doc ${num} not found.`);
+        app.activeDocument = slideDoc;
+
+        // Try to create file with unique name if there's a conflict
+        let fileEntry;
+        while (true) {
+          try {
+            fileEntry = await outputFolder.createFile(`${fileName}.${ext}`, { overwrite: true });
+            break;
+          } catch (fileError) {
+            if (fileError.message && fileError.message.includes("Folder")) {
+              // Folder with this name exists, try a different name
+              fileName = `${baseFileName}_${suffix}`;
+              suffix++;
+              if (suffix > 100) {
+                throw new Error("Could not create file: too many name conflicts");
+              }
+            } else {
+              throw fileError;
+            }
+          }
+        }
+
+        if (doJpg) {
+          await slideDoc.saveAs.jpg(fileEntry, { quality: quality }, true);
+        } else {
+          await slideDoc.saveAs.png(fileEntry, {}, true);
+        }
+        exportedFiles.push({ entry: fileEntry, name: `${fileName}.${ext}` });
+        setStatus(`Exported ${i + 1} / ${count}…`, "working");
+      }
+    }, { commandName: doJpg ? "Export Slides as JPG" : "Export Slides" });
+
+    if (zipOutput) {
+      setStatus("Creating ZIP...", "working");
+      await createSlidesZip(folderEntry, exportStem, exportedFiles);
+      await cleanupExportEntries(exportedFiles.map((fileInfo) => fileInfo.entry));
+      await cleanupExportEntries([outputFolder]);
+      setStatus(`✓ Exported ${slides.length} slides to ${exportStem}.zip`, "success");
+    } else {
+      setStatus(`✓ All ${slides.length} slides exported!`, "success");
+    }
+    await closeAllSlideDocs();
+    updateDeleteSlidesUI();
+  } catch (e) {
+    showError("Export failed", e);
+  }
+}
+
+async function exportSelectedLayersWithName(customName, format, quality) {
+  const doc = app.activeDocument;
+  if (!doc) {
+    showError("Export failed", new Error("No active document."));
+    return;
+  }
+
+  const selectedLayers = doc.activeLayers;
+  if (!selectedLayers || selectedLayers.length === 0) {
+    showError("Export failed", new Error("No layers selected. Please select layers to export."));
+    return;
+  }
+
+  const doJpg = format === "jpg";
+  const ext = doJpg ? "jpg" : "png";
+
+  setStatus("Choose folder to save layers…", "working");
+  let folderEntry;
+  try {
+    folderEntry = await uxpFs.getFolder();
+    if (!folderEntry) { setStatus("Export cancelled.", ""); return; }
+  } catch (e) {
+    showError("Folder selection failed", e);
+    return;
+  }
+
+  try {
+    await core.executeAsModal(async () => {
+      // Store original visibility states
+      const layerStates = [];
+        const allLayers = getAllLayersRecursive(doc);
+
+      allLayers.forEach(layer => {
+        layerStates.push({
+          id: layer.id,
+          visible: layer.visible
+        });
+      });
+
+      // Hide all layers first
+      await action.batchPlay([{
+        _obj: "set",
+        _target: [{ _ref: "layer", _enum: "ordinal", _value: "allEnum" }],
+        to: { _obj: "layer", visible: false }
+      }], { synchronousExecution: true });
+
+      // Export each selected layer one at a time
+      for (let i = 0; i < selectedLayers.length; i++) {
+        const layer = selectedLayers[i];
+        const num = i + 1;
+        const baseFileName = `${customName}_${layer.name.replace(/[^a-zA-Z0-9_-]/g, "_")}_${String(num).padStart(2, "0")}`;
+        let fileName = baseFileName;
+        let suffix = 1;
+
+        // Hide all layers
+        allLayers.forEach(l => {
+          if (l.visible) {
+            action.batchPlay([{
+              _obj: "set",
+              _target: [{ _ref: "layer", _id: l.id }],
+              to: { _obj: "layer", visible: false }
+            }], { synchronousExecution: true });
+          }
+        });
+
+        // Show only the current layer
+        await action.batchPlay([{
+          _obj: "set",
+          _target: [{ _ref: "layer", _id: layer.id }],
+          to: { _obj: "layer", visible: true }
+        }], { synchronousExecution: true });
+
+        app.activeDocument = doc;
+
+        // Try to create file with unique name if there's a conflict
+        let fileEntry;
+        while (true) {
+          try {
+            fileEntry = await folderEntry.createFile(`${fileName}.${ext}`, { overwrite: true });
+            break;
+          } catch (fileError) {
+            if (fileError.message && fileError.message.includes("Folder")) {
+              // Folder with this name exists, try a different name
+              fileName = `${baseFileName}_${suffix}`;
+              suffix++;
+              if (suffix > 100) {
+                throw new Error("Could not create file: too many name conflicts");
+              }
+            } else {
+              throw fileError;
+            }
+          }
+        }
+
+        if (doJpg) {
+          await doc.saveAs.jpg(fileEntry, { quality: quality }, true);
+        } else {
+          await doc.saveAs.png(fileEntry, {}, true);
+        }
+
+        setStatus(`Exported ${i + 1} / ${selectedLayers.length}…`, "working");
+      }
+
+      // Restore original visibility states
+      for (const state of layerStates) {
+        await action.batchPlay([{
+          _obj: "set",
+          _target: [{ _ref: "layer", _id: state.id }],
+          to: { _obj: "layer", visible: state.visible }
+        }], { synchronousExecution: true });
+      }
+    }, { commandName: doJpg ? "Export Selected Layers as JPG" : "Export Selected Layers" });
+
+    setStatus(`✓ All ${selectedLayers.length} layers exported!`, "success");
+  } catch (e) {
+    showError("Export failed", e);
+  }
+}
+
 // â”€â”€â”€ 6. Delete Slides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function updateDeleteSlidesUI() {
@@ -2470,7 +2843,7 @@ function handleButtonClick(event) {
     case "btn-add-guides": addGuides(); break;
     case "btn-clear-guides": clearGuides(); break;
     case "btn-crop-slides": cropSlides(); break;
-    case "btn-export-slides": exportSlides(); break;
+    case "btn-export-slides": showExportOptionsModal(); break;
 
     case "btn-rasterize": rasterizeSelectedLayers(); break;
     case "btn-organize-slides": organizeLayersIntoSlides(); break;
@@ -3068,8 +3441,11 @@ const BUTTON_DEFS = {
   "btn-smart-merge": { title: "Merge all into ONE Smart Object", variant: "smart-merge", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="8" height="8" rx="1"/><path d="M10 6h4M6 10v4M18 10v4M10 18h4"/></svg>` },
   "btn-convert-layers": { title: "Convert to Layers", isPill: true, pillLabel: "Convert to Layers", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="6" rx="1.2"/><rect x="14" y="4" width="7" height="6" rx="1.2"/><rect x="3" y="14" width="7" height="6" rx="1.2"/><rect x="14" y="14" width="7" height="6" rx="1.2"/><path d="M10 7h4M10 17h4M12 10v4" stroke-linecap="round"/></svg>` },
   "btn-place-embed": { title: "Place Embedded", variant: "place-embed", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>` },
+  "btn-paste-text-lines": { title: "Paste Styled Text Lines", isPill: true, pillLabel: "Paste Text", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M12 5v14"/><path d="M8 19h8"/><path d="M5 11h4"/><path d="M15 11h4"/></svg>` },
+  "btn-notes-board": { title: "Notes Board", isPill: true, pillLabel: "Notes", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h5"/><path d="M15 15l2 2 3-4"/></svg>` },
   "btn-new-layer": { title: "New Layer", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>` },
-  "btn-rasterize": { title: "Rasterize Layer", variant: "rasterize", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="8" rx="1.5"/><path d="M15 5h2M19 5h.01M15 9h.01M19 9h2M15 13h2M19 13h.01M15 17h.01M19 17h2"/><path d="M11 8l4 4"/></svg>` },
+  "btn-rasterize": { title: "Rasterize Layer", isPill: true, pillLabel: "Rasterize", pillVariant: "rasterize", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="8" rx="1.5"/><path d="M15 5h2M19 5h.01M15 9h.01M19 9h2M15 13h2M19 13h.01M15 17h.01M19 17h2"/><path d="M11 8l4 4"/></svg>` },
+  "btn-remove-effects": { title: "Remove Layer Effects", variant: "remove-effects", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14"/><path d="M7 4l1 16h8l1-16"/><path d="M9 9h6"/><path d="M9 13h6"/><path d="M4 20L20 4"/></svg>` },
   "btn-align-left": { title: "Align Left", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="4" x2="4" y2="20"/><rect x="8" y="6" width="12" height="4"/><rect x="8" y="14" width="8" height="4"/></svg>` },
   "btn-align-h-center": { title: "Align H Center", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="4" x2="12" y2="20"/><rect x="4" y="7" width="16" height="4"/><rect x="7" y="13" width="10" height="4"/></svg>` },
   "btn-align-right": { title: "Align Right", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="20" y1="4" x2="20" y2="20"/><rect x="4" y="6" width="12" height="4"/><rect x="8" y="14" width="8" height="4"/></svg>` },
@@ -3085,10 +3461,11 @@ const BUTTON_DEFS = {
 };
 
 const DEFAULT_LAYOUT = [
-  [{ id: "g-transform", name: "Transform", buttons: ["btn-width", "btn-both", "btn-stretch-all", "btn-rotate-left", "btn-rotate-right", "btn-smart-object", "btn-smart-merge", "btn-convert-layers", "btn-place-embed", "btn-new-layer"] }],
+  [{ id: "g-transform", name: "Transform", buttons: ["btn-width", "btn-both", "btn-stretch-all", "btn-rotate-left", "btn-rotate-right", "btn-smart-object", "btn-smart-merge", "btn-place-embed", "btn-new-layer"] }],
+  [{ id: "g-text-tools", name: "Text", buttons: ["btn-convert-layers", "btn-paste-text-lines", "btn-notes-board", "btn-rasterize"] }],
   [{ id: "g-align", name: "Align", buttons: ["btn-align-left", "btn-align-h-center", "btn-align-right", "btn-align-top", "btn-align-v-center", "btn-align-bottom"] }],
   [{ id: "g-flip", name: "Flip", buttons: ["btn-distribute-h", "btn-distribute-v"] },
-  { id: "g-actions", name: "Actions", buttons: ["btn-visibility", "btn-invert", "btn-delete", "btn-rasterize"] },
+  { id: "g-actions", name: "Actions", buttons: ["btn-visibility", "btn-invert", "btn-remove-effects", "btn-delete"] },
   { id: "g-manage", name: "Manage", buttons: ["btn-link-layers"] }]
 ];
 
@@ -3104,6 +3481,7 @@ let autoSaveEndsAt = 0;
 let autoSaveDurationMinutes = null;
 let preferredAutoSaveMinutes = 5;
 let autoSaveLastPulseSecond = null;
+let autoSaveIsSaving = false;
 const DEFAULT_HEADER_TITLE = "Slide Creator";
 const AUTO_SAVE_OFF_HEADER_TITLE = "Auto Save Off - Turn It On";
 
@@ -3156,6 +3534,69 @@ function ensureConvertToLayersButton(layoutState) {
 
   if (layoutState.length === 0) layoutState.push([]);
   layoutState[layoutState.length - 1].push(defaultTransformGroup);
+}
+
+function normalizeTextToolsRow(layoutState) {
+  const textButtons = ["btn-convert-layers", "btn-paste-text-lines", "btn-notes-board", "btn-rasterize"];
+
+  layoutState.forEach((row) => {
+    row.forEach((group) => {
+      group.buttons = (group.buttons || []).filter((buttonId) => !textButtons.includes(buttonId));
+    });
+  });
+
+  for (let rowIndex = layoutState.length - 1; rowIndex >= 0; rowIndex--) {
+    layoutState[rowIndex] = layoutState[rowIndex].filter((group) => group.id !== "g-text-tools" && (group.buttons || []).length > 0);
+    if (layoutState[rowIndex].length === 0) layoutState.splice(rowIndex, 1);
+  }
+
+  const textRow = [{ id: "g-text-tools", name: "Text", buttons: textButtons }];
+  const transformIndex = layoutState.findIndex((row) => row.some((group) => group.id === "g-transform"));
+  const insertAt = transformIndex === -1 ? 1 : transformIndex + 1;
+  layoutState.splice(Math.min(insertAt, layoutState.length), 0, textRow);
+}
+
+function ensureRemoveEffectsButton(layoutState) {
+  const alreadyPresent = layoutState.some((row) =>
+    row.some((group) => (group.buttons || []).includes("btn-remove-effects"))
+  );
+  if (alreadyPresent) return;
+
+  const actionsGroup = layoutState.flat().find((group) => group.id === "g-actions");
+  if (actionsGroup) {
+    actionsGroup.buttons = Array.isArray(actionsGroup.buttons) ? actionsGroup.buttons : [];
+    const beforeDelete = actionsGroup.buttons.indexOf("btn-delete");
+    const insertAt = beforeDelete !== -1 ? beforeDelete : actionsGroup.buttons.length;
+    actionsGroup.buttons.splice(insertAt, 0, "btn-remove-effects");
+    return;
+  }
+
+  const defaultActionsGroup = cloneDefaultLayout().flat().find((group) => group.id === "g-actions");
+  if (!defaultActionsGroup) return;
+
+  if (layoutState.length === 0) layoutState.push([]);
+  layoutState[layoutState.length - 1].push(defaultActionsGroup);
+}
+
+function ensureTransformToolButton(layoutState, buttonId, beforeButtonId = "btn-new-layer") {
+  const alreadyPresent = layoutState.some((row) =>
+    row.some((group) => (group.buttons || []).includes(buttonId))
+  );
+  if (alreadyPresent) return;
+
+  const transformGroup = layoutState.flat().find((group) => group.id === "g-transform");
+  if (transformGroup) {
+    transformGroup.buttons = Array.isArray(transformGroup.buttons) ? transformGroup.buttons : [];
+    const beforeIndex = transformGroup.buttons.indexOf(beforeButtonId);
+    const insertAt = beforeIndex !== -1 ? beforeIndex : transformGroup.buttons.length;
+    transformGroup.buttons.splice(insertAt, 0, buttonId);
+    return;
+  }
+
+  const defaultTransformGroup = cloneDefaultLayout().flat().find((group) => group.id === "g-transform");
+  if (!defaultTransformGroup) return;
+  if (layoutState.length === 0) layoutState.push([]);
+  layoutState[0].push(defaultTransformGroup);
 }
 
 function clearAutoSaveTimerState() {
@@ -3250,21 +3691,36 @@ function updateAutoSaveTimerUI() {
 }
 
 async function runAutoSaveTimerSave() {
+  if (autoSaveIsSaving) return;
   const targetDoc = app.documents.find((doc) => doc.id === autoSaveTargetDocId);
   const timerMinutes = autoSaveDurationMinutes;
   const docLabel = autoSaveTargetDocTitle || "document";
 
-  clearAutoSaveTimerState();
-  updateAutoSaveTimerUI();
-
   if (!targetDoc) {
+    clearAutoSaveTimerState();
+    updateAutoSaveTimerUI();
     showError("Auto-save failed", new Error(`The timed document "${docLabel}" is no longer open.`));
     return;
   }
 
   try {
+    autoSaveIsSaving = true;
+    if (autoSaveIntervalId) {
+      window.clearInterval(autoSaveIntervalId);
+      autoSaveIntervalId = null;
+    }
+    updateAutoSaveTimerUI();
+
     await core.executeAsModal(async () => {
-      await targetDoc.save();
+      if (typeof targetDoc.save === "function") {
+        await targetDoc.save();
+      } else {
+        app.activeDocument = targetDoc;
+        await action.batchPlay([{ _obj: "save", _options: { dialogOptions: "dontDisplay" } }], {
+          synchronousExecution: true,
+          continueOnError: true,
+        });
+      }
     }, {
       commandName: "Timed Save Document",
       interactive: true,
@@ -3276,6 +3732,9 @@ async function runAutoSaveTimerSave() {
     }
   } catch (e) {
     showError("Auto-save failed", e);
+  } finally {
+    autoSaveIsSaving = false;
+    updateAutoSaveTimerUI();
   }
 }
 
@@ -3369,8 +3828,10 @@ function loadLayout() {
         );
         ensureRasterizeButton(layout);
         ensureConvertToLayersButton(layout);
+        ensureRemoveEffectsButton(layout);
+        normalizeTextToolsRow(layout);
         const allSaved = layout.flat().flatMap(g => g.buttons);
-        const newBtns = Object.keys(BUTTON_DEFS).filter(id => !allSaved.includes(id) && id !== "btn-rasterize" && id !== "btn-convert-layers");
+        const newBtns = Object.keys(BUTTON_DEFS).filter(id => !allSaved.includes(id) && id !== "btn-rasterize" && id !== "btn-convert-layers" && id !== "btn-remove-effects" && id !== "btn-paste-text-lines" && id !== "btn-notes-board");
         if (newBtns.length) layout[0][0].buttons.push(...newBtns);
         return;
       }
@@ -3429,12 +3890,11 @@ function renderLayout() {
     root.appendChild(rowEl);
   });
 
-  // â”€â”€ Full-width JPG export button pinned at the bottom â”€â”€
-  const jpgSpacer = document.createElement("div");
-  jpgSpacer.className = "tools-bottom-spacer";
-  root.appendChild(jpgSpacer);
+  const toolsFooter = document.createElement("div");
+  toolsFooter.className = "tools-footer";
+  root.appendChild(toolsFooter);
 
-  renderAutoSaveTimerCard(root);
+  renderAutoSaveTimerCard(toolsFooter);
 
   const jpgBtn = document.createElement("div");
   jpgBtn.id = "tools-export-jpg-btn";
@@ -3447,10 +3907,10 @@ function renderLayout() {
             <polyline points="9 15 12 18 15 15"/>
         </svg>
         <span>Export as JPG</span>
-    `;
+  `;
   jpgBtn.title = "Export document as JPG";
-  jpgBtn.addEventListener("click", () => showJpgFilenamePrompt(root));
-  root.appendChild(jpgBtn);
+  jpgBtn.addEventListener("click", () => showJpgExportChoiceDialog());
+  toolsFooter.appendChild(jpgBtn);
 
   // â”€â”€ PNG Export button â”€â”€
   const pngBtn = document.createElement("div");
@@ -3463,10 +3923,10 @@ function renderLayout() {
             <polyline points="9 15 12 18 15 15"/>
         </svg>
         <span>Export as PNG</span>
-    `;
+  `;
   pngBtn.title = "Export document as PNG";
   pngBtn.addEventListener("click", () => exportAllLayersAsImages("png"));
-  root.appendChild(pngBtn);
+  toolsFooter.appendChild(pngBtn);
 
   // â”€â”€ Export All Layers button â”€â”€
   const exportAllBtn = document.createElement("div");
@@ -3478,10 +3938,10 @@ function renderLayout() {
             <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
         <span>Export All Layers</span>
-    `;
+  `;
   exportAllBtn.title = "Export all layers as separate image files";
   exportAllBtn.addEventListener("click", () => showLayerExportSelector());
-  root.appendChild(exportAllBtn);
+  toolsFooter.appendChild(exportAllBtn);
 
   wireActions();
 }
@@ -3775,6 +4235,7 @@ function fireAction(id) {
     "btn-visibility": toggleVisibility,
     "btn-invert": invertColors,
     "btn-rasterize": rasterizeSelectedLayers,
+    "btn-remove-effects": showLayerEffectsRemovalSelector,
     "btn-convert-layers": convertToLayers,
     "btn-smart-object": convertToSmartObject,
     "btn-smart-merge": convertToSmartObjectMerged,
@@ -3785,6 +4246,8 @@ function fireAction(id) {
     "btn-rotate-left": () => rotateLayer(-90),
     "btn-rotate-right": () => rotateLayer(90),
     "btn-place-embed": placeEmbedded,
+    "btn-paste-text-lines": showStyledTextPasteDialog,
+    "btn-notes-board": showNotesBoard,
     "btn-align-left": () => alignLayersToCanvas("left"),
     "btn-align-h-center": () => alignLayersToCanvas("h-center"),
     "btn-align-right": () => alignLayersToCanvas("right"),
@@ -3796,7 +4259,7 @@ function fireAction(id) {
     "btn-link-layers": linkSelectedLayers,
     "btn-delete": deleteSelectedLayers,
   };
-  if (map[id]) map[id]();
+  if (map[id]) runPanelAction(BUTTON_DEFS[id]?.title || "Action failed", map[id]);
 }
 
 function wireActions() {
@@ -3985,27 +4448,95 @@ async function flipLayer(direction) {
 }
 
 async function alignLayersToCanvas(mode) {
-  const sm = { left: "ADSLefts", "h-center": "ADSCentersH", right: "ADSRights", top: "ADSTops", "v-center": "ADSCentersV", bottom: "ADSBottoms" };
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("No document open", "error");
+    return;
+  }
+  const active = Array.from(doc.activeLayers || []).filter(l => !l.locked);
+  if (!active.length) {
+    setStatus("Select a layer to align", "error");
+    return;
+  }
+  if (active.length >= 2) {
+    showAlignmentTargetDialog(mode, active);
+    return;
+  }
+  await applyLayerAlignment(mode, active[0], null);
+}
+
+function showAlignmentTargetDialog(mode, activeLayers) {
+  const existing = document.getElementById("alignment-target-modal");
+  if (existing) existing.remove();
+
+  const sourceLayer = activeLayers[0];
+  const targetLayers = activeLayers.slice(1);
+  const modal = document.createElement("div");
+  modal.id = "alignment-target-modal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = `
+    <div class="modal-content layer-export-modal-content compact-tool-modal">
+      <div class="modal-header">
+        <h3>Align Layer</h3>
+        <button class="modal-close" id="close-align-target-modal">&times;</button>
+      </div>
+      <div class="tool-modal-body">
+        <button id="align-to-page" type="button" class="tool-choice-btn primary">Align to page</button>
+        <div class="alignment-target-list">
+          <div class="modal-field-label">Use Layer Size</div>
+          ${targetLayers.map((layer) => `<button type="button" class="tool-choice-btn alignment-layer-option" data-layer-id="${layer.id}">${escapeHtml(layer.name || "Layer")}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  modal.querySelector("#close-align-target-modal").addEventListener("click", () => modal.remove());
+  modal.querySelector("#align-to-page").addEventListener("click", async () => {
+    modal.remove();
+    await applyLayerAlignment(mode, sourceLayer, null);
+  });
+  modal.querySelectorAll(".alignment-layer-option").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const targetId = Number(button.dataset.layerId);
+      const targetLayer = targetLayers.find((layer) => Number(layer.id) === targetId);
+      modal.remove();
+      await applyLayerAlignment(mode, sourceLayer, targetLayer || null);
+    });
+  });
+}
+
+async function applyLayerAlignment(mode, sourceLayer, targetLayer) {
   await core.executeAsModal(async () => {
     const doc = app.activeDocument; if (!doc) return;
-    const active = doc.activeLayers.filter(l => !l.locked); if (!active.length) return;
-    if (active.length === 1) {
-      const layer = active[0], b = layer.bounds;
-      const left = Number(b.left), right = Number(b.right), top = Number(b.top), bottom = Number(b.bottom);
-      const docW = Number(doc.width), docH = Number(doc.height);
-      const cx = left + (right - left) / 2, cy = top + (bottom - top) / 2;
-      let tx = 0, ty = 0;
-      if (mode === "left") tx = 0 - left;
-      else if (mode === "h-center") tx = (docW / 2) - cx;
-      else if (mode === "right") tx = docW - right;
-      else if (mode === "top") ty = 0 - top;
-      else if (mode === "v-center") ty = (docH / 2) - cy;
-      else if (mode === "bottom") ty = docH - bottom;
-      await layer.translate(tx, ty);
-    } else {
-      await action.batchPlay([{ _obj: "align", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }], using: { _enum: "alignDistributeSelector", _value: sm[mode] }, alignToCanvas: true, _options: { dialogOptions: "dontDisplay" } }], {});
-    }
-  }, { commandName: `Align ${mode}` });
+    const sourceRect = getLayerBoundsRect(sourceLayer);
+    const targetRect = targetLayer ? getLayerBoundsRect(targetLayer) : {
+      left: 0,
+      top: 0,
+      right: Number(doc.width),
+      bottom: Number(doc.height),
+      width: Number(doc.width),
+      height: Number(doc.height),
+    };
+    if (!sourceRect || !targetRect) return;
+
+    const sourceCx = sourceRect.left + sourceRect.width / 2;
+    const sourceCy = sourceRect.top + sourceRect.height / 2;
+    const targetCx = targetRect.left + targetRect.width / 2;
+    const targetCy = targetRect.top + targetRect.height / 2;
+    let tx = 0;
+    let ty = 0;
+
+    if (mode === "left") tx = targetRect.left - sourceRect.left;
+    else if (mode === "h-center") tx = targetCx - sourceCx;
+    else if (mode === "right") tx = targetRect.right - sourceRect.right;
+    else if (mode === "top") ty = targetRect.top - sourceRect.top;
+    else if (mode === "v-center") ty = targetCy - sourceCy;
+    else if (mode === "bottom") ty = targetRect.bottom - sourceRect.bottom;
+
+    await action.batchPlay([{ _obj: "select", _target: [{ _ref: "layer", _id: sourceLayer.id }], makeVisible: false }], { synchronousExecution: true });
+    await sourceLayer.translate(tx, ty);
+  }, { commandName: targetLayer ? "Align to Layer" : "Align to Page" });
 }
 
 async function deleteSelectedLayers() {
@@ -4013,6 +4544,754 @@ async function deleteSelectedLayers() {
     const doc = app.activeDocument; if (!doc) return;
     for (const l of [...doc.activeLayers]) if (!l.locked) await l.delete();
   }, { commandName: "Delete Selected Layers" });
+}
+
+const TEXT_PASTE_FONTS = [
+  { label: "Arial", value: "ArialMT" },
+  { label: "Arial Bold", value: "Arial-BoldMT" },
+  { label: "Helvetica", value: "Helvetica" },
+  { label: "Times", value: "TimesNewRomanPSMT" },
+  { label: "Georgia", value: "Georgia" },
+  { label: "Impact", value: "Impact" },
+];
+
+const TEXT_PASTE_STYLES = [
+  { label: "Regular", bold: false, italic: false },
+  { label: "Bold", bold: true, italic: false },
+  { label: "Italic", bold: false, italic: true },
+  { label: "Bold Italic", bold: true, italic: true },
+];
+
+let notesBoardZoom = 1;
+
+function parseHexToRGBColor(hexValue, fallback = "#ffffff") {
+  const clean = String(hexValue || fallback).trim().replace(/^#/, "");
+  const full = clean.length === 3
+    ? clean.split("").map((char) => char + char).join("")
+    : clean;
+  const value = /^[0-9a-fA-F]{6}$/.test(full) ? full : fallback.replace(/^#/, "");
+  return {
+    _obj: "RGBColor",
+    red: parseInt(value.slice(0, 2), 16),
+    green: parseInt(value.slice(2, 4), 16),
+    blue: parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function getLayerBoundsRect(layer) {
+  const bounds = (layer && (layer.boundsNoEffects || layer.bounds)) || null;
+  if (!bounds) return null;
+  const left = Number(bounds.left);
+  const top = Number(bounds.top);
+  const right = Number(bounds.right);
+  const bottom = Number(bounds.bottom);
+  if (![left, top, right, bottom].every(Number.isFinite)) return null;
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+async function showJpgExportChoiceDialog() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("No document open", "error");
+    return;
+  }
+
+  const existingModal = document.getElementById("jpg-export-choice-modal");
+  if (existingModal) existingModal.remove();
+
+  const baseName = (doc.title || doc.name || "export").replace(/\.[^/.]+$/, "");
+  const hasSelectedLayer = Array.from(doc.activeLayers || []).filter((layer) => !layer.locked).length > 0;
+  const modal = document.createElement("div");
+  modal.id = "jpg-export-choice-modal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = `
+    <div class="modal-content layer-export-modal-content compact-tool-modal">
+      <div class="modal-header">
+        <h3>Export JPG</h3>
+        <button class="modal-close" id="close-jpg-export-modal">&times;</button>
+      </div>
+      <div class="tool-modal-body">
+        <input id="jpg-export-name" class="modal-input" value="${escapeHtml(baseName)}" placeholder="File name">
+        <button id="jpg-export-selected-layer" type="button" class="tool-choice-btn" ${hasSelectedLayer ? "" : "disabled"}>
+          <span>Export selected layer as JPG</span>
+        </button>
+        <button id="jpg-export-document" type="button" class="tool-choice-btn primary">
+          <span>Export entire document as JPG</span>
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const getName = () => {
+    const input = modal.querySelector("#jpg-export-name");
+    return String(input && input.value ? input.value : baseName).trim() || baseName;
+  };
+  modal.querySelector("#close-jpg-export-modal").addEventListener("click", () => modal.remove());
+  modal.querySelector("#jpg-export-selected-layer").addEventListener("click", async () => {
+    modal.remove();
+    await exportJpgWithWhiteBackground("selected", getName());
+  });
+  modal.querySelector("#jpg-export-document").addEventListener("click", async () => {
+    modal.remove();
+    await exportJpgWithWhiteBackground("document", getName());
+  });
+}
+
+async function exportJpgWithWhiteBackground(scope, customName) {
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("No document open", "error");
+    return;
+  }
+
+  const folder = await uxpFs.getFolder();
+  if (!folder) {
+    setStatus("Export cancelled", "");
+    return;
+  }
+
+  const safeName = String(customName || "export").replace(/[<>:"/\\|?*]/g, "_");
+  const file = await folder.createFile(`${safeName}.jpg`, { overwrite: true });
+  const originalDocId = doc.id;
+
+  setStatus("Exporting JPG with solid background...", "working");
+
+  try {
+    await core.executeAsModal(async () => {
+      let width = Math.max(1, Math.round(Number(doc.width) || 1));
+      let height = Math.max(1, Math.round(Number(doc.height) || 1));
+      let targetLayer = null;
+
+      if (scope === "selected") {
+        targetLayer = Array.from(doc.activeLayers || []).find((layer) => !layer.locked);
+        if (!targetLayer) throw new Error("Select one layer to export as JPG.");
+        const rect = getLayerBoundsRect(targetLayer);
+        if (rect && rect.width > 0 && rect.height > 0) {
+          width = Math.max(1, Math.round(rect.width));
+          height = Math.max(1, Math.round(rect.height));
+        }
+      }
+
+      const tempFill = constants.DocumentFill.WHITE || constants.DocumentFill.BACKGROUNDCOLOR || constants.DocumentFill.TRANSPARENT;
+      const tempDoc = await app.documents.add(width, height, 72, "JPG_Export", constants.NewDocumentMode.RGB, tempFill);
+      app.activeDocument = tempDoc;
+      await action.batchPlay([
+        { _obj: "selectAll", _options: { dialogOptions: "dontDisplay" } },
+        {
+          _obj: "fill",
+          using: { _enum: "fillContents", _value: "color" },
+          color: { _obj: "RGBColor", red: 255, green: 255, blue: 255 },
+          opacity: { _unit: "percentUnit", _value: 100 },
+          mode: { _enum: "blendMode", _value: "normal" },
+          _options: { dialogOptions: "dontDisplay" },
+        },
+        { _obj: "deselect", _options: { dialogOptions: "dontDisplay" } },
+      ], { synchronousExecution: true, continueOnError: true });
+      app.activeDocument = doc;
+
+      if (targetLayer) {
+        await action.batchPlay([{
+          _obj: "select",
+          _target: [{ _ref: "layer", _id: targetLayer.id }],
+          makeVisible: false,
+          _options: { dialogOptions: "dontDisplay" },
+        }], { synchronousExecution: true });
+      }
+
+      if (!targetLayer) {
+        await action.batchPlay([{ _obj: "selectAll", _options: { dialogOptions: "dontDisplay" } }], {
+          synchronousExecution: true,
+          continueOnError: true,
+        });
+      }
+
+      await action.batchPlay([{ _obj: "copyMerge", _options: { dialogOptions: "dontDisplay" } }], {
+        synchronousExecution: true,
+        continueOnError: true,
+      });
+      if (!targetLayer) {
+        await action.batchPlay([{ _obj: "deselect", _options: { dialogOptions: "dontDisplay" } }], {
+          synchronousExecution: true,
+          continueOnError: true,
+        });
+      }
+
+      app.activeDocument = tempDoc;
+      await action.batchPlay([{ _obj: "paste", _options: { dialogOptions: "dontDisplay" } }], {
+        synchronousExecution: true,
+        continueOnError: true,
+      });
+      await tempDoc.flatten();
+      await tempDoc.saveAs.jpg(file, { quality: 12 }, true);
+      await tempDoc.close(constants.SaveOptions.DONOTSAVECHANGES);
+
+      const originalDoc = app.documents.find((item) => item.id === originalDocId);
+      if (originalDoc) app.activeDocument = originalDoc;
+    }, { commandName: "Export JPG With Background" });
+
+    setStatus(`Exported "${safeName}.jpg"`, "success");
+  } catch (e) {
+    showError("JPG export failed", e);
+  }
+}
+
+function showStyledTextPasteDialog() {
+  const existing = document.getElementById("styled-text-paste-modal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "styled-text-paste-modal";
+  modal.className = "modal-overlay";
+  modal.style.background = "rgba(0, 0, 0, 0.72)";
+  document.body.classList.add("text-paste-modal-open");
+  modal.innerHTML = `
+    <div class="modal-content layer-export-modal-content text-paste-modal-content">
+      <div class="modal-header">
+        <h3>Paste Text</h3>
+        <button class="modal-close" id="close-text-paste-modal">&times;</button>
+      </div>
+      <div class="tool-modal-body">
+        <div class="text-paste-mode-row" role="group" aria-label="Paste text mode" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 2px 0;min-height:40px;">
+          <div class="text-paste-mode-option active" role="button" tabindex="0" data-text-paste-mode="all" style="display:flex;align-items:center;justify-content:center;min-height:40px;border:1px solid rgba(91,155,240,.62);background:rgba(47,125,246,.25);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">All</div>
+          <div class="text-paste-mode-option" role="button" tabindex="0" data-text-paste-mode="break" style="display:flex;align-items:center;justify-content:center;min-height:40px;border:1px solid rgba(255,255,255,.14);background:rgba(12,18,28,.9);color:#dbe5f7;font-size:13px;font-weight:700;cursor:pointer;">Break</div>
+        </div>
+        <textarea id="text-paste-source" class="tool-textarea" placeholder="Paste multiple lines here"></textarea>
+        <div class="text-paste-toolbar">
+          <button id="text-paste-build-lines" type="button" class="tool-choice-btn">Set Styles</button>
+        </div>
+        <div id="text-paste-line-list" class="text-paste-line-list"></div>
+      </div>
+      <div class="layer-export-actions">
+        <button id="text-paste-cancel" class="btn-select-all">Cancel</button>
+        <button id="text-paste-apply" class="btn-export-selected">Paste</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const modalContent = modal.querySelector(".text-paste-modal-content");
+  if (modalContent) {
+    modalContent.style.width = "min(340px, calc(100vw - 28px))";
+    modalContent.style.background = "linear-gradient(180deg, rgba(58, 74, 103, 0.99), rgba(43, 55, 78, 0.99))";
+    modalContent.style.boxShadow = "0 24px 54px rgba(0,0,0,.58)";
+  }
+
+  const source = modal.querySelector("#text-paste-source");
+  const list = modal.querySelector("#text-paste-line-list");
+  const modeOptions = Array.from(modal.querySelectorAll(".text-paste-mode-option"));
+  let pasteMode = "all";
+  const closeModal = () => {
+    document.body.classList.remove("text-paste-modal-open");
+    modal.remove();
+  };
+  const getMode = () => pasteMode;
+  const renderRows = () => {
+    const mode = getMode();
+    const sourceText = String(source.value || "");
+    const lines = mode === "break"
+      ? sourceText.split(/\r?\n/).filter((line) => line.length > 0)
+      : [sourceText].filter((line) => line.length > 0);
+    list.innerHTML = lines.map((line, index) => `
+      <div class="text-paste-line-row" data-line-index="${index}">
+        <div class="text-paste-line-preview">${escapeHtml(line)}</div>
+        <select class="text-paste-font">${TEXT_PASTE_FONTS.map((font) => `<option value="${font.value}">${font.label}</option>`).join("")}</select>
+        <input class="text-paste-color" type="color" value="${index % 2 ? "#f8d36b" : "#ffffff"}">
+        <select class="text-paste-style">${TEXT_PASTE_STYLES.map((style, styleIndex) => `<option value="${styleIndex}">${style.label}</option>`).join("")}</select>
+      </div>
+    `).join("");
+  };
+  const syncModeUI = () => {
+    const mode = getMode();
+    modeOptions.forEach((option) => {
+      const active = option.dataset.textPasteMode === mode;
+      option.classList.toggle("active", active);
+      option.style.borderColor = active ? "rgba(91,155,240,.72)" : "rgba(255,255,255,.14)";
+      option.style.background = active ? "rgba(47,125,246,.28)" : "rgba(12,18,28,.9)";
+      option.style.color = active ? "#fff" : "#dbe5f7";
+    });
+    modal.querySelector("#text-paste-build-lines").textContent = mode === "break" ? "Set Line Styles" : "Set Text Style";
+    renderRows();
+  };
+
+  modal.querySelector("#close-text-paste-modal").addEventListener("click", closeModal);
+  modal.querySelector("#text-paste-cancel").addEventListener("click", closeModal);
+  modal.querySelector("#text-paste-build-lines").addEventListener("click", renderRows);
+  modeOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      pasteMode = option.dataset.textPasteMode || "all";
+      syncModeUI();
+    });
+    option.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      pasteMode = option.dataset.textPasteMode || "all";
+      syncModeUI();
+    });
+  });
+  source.addEventListener("input", () => {
+    if (getMode() === "break" || !list.children.length) renderRows();
+  });
+  modal.querySelector("#text-paste-apply").addEventListener("click", async () => {
+    if (!list.children.length) renderRows();
+    const sourceText = String(source.value || "");
+    const lines = getMode() === "break"
+      ? sourceText.split(/\r?\n/).filter((line) => line.length > 0)
+      : [sourceText].filter((line) => line.length > 0);
+    const styles = Array.from(list.querySelectorAll(".text-paste-line-row")).map((row) => {
+      const style = TEXT_PASTE_STYLES[Number(row.querySelector(".text-paste-style").value)] || TEXT_PASTE_STYLES[0];
+      return {
+        font: row.querySelector(".text-paste-font").value,
+        color: row.querySelector(".text-paste-color").value,
+        bold: style.bold,
+        italic: style.italic,
+      };
+    });
+    closeModal();
+    await pasteStyledTextLines(lines, styles);
+  });
+  syncModeUI();
+  setTimeout(() => source.focus(), 40);
+}
+
+async function pasteStyledTextLines(lines, styles) {
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("No document open", "error");
+    return;
+  }
+  if (!lines.length) {
+    setStatus("Paste text first", "error");
+    return;
+  }
+
+  const startX = Math.round(Number(doc.width) * 0.08) || 80;
+  const startY = Math.round(Number(doc.height) * 0.14) || 100;
+  const fontSize = Math.max(22, Math.round((Number(doc.height) || 1080) * 0.045));
+  const lineGap = Math.round(fontSize * 1.35);
+
+  try {
+    await core.executeAsModal(async () => {
+      for (let index = 0; index < lines.length; index++) {
+        const style = styles[index] || styles[0] || {};
+        const color = parseHexToRGBColor(style.color || "#ffffff");
+        await action.batchPlay([{
+          _obj: "make",
+          _target: [{ _ref: "textLayer" }],
+          using: {
+            _obj: "textLayer",
+            textKey: lines[index],
+            textClickPoint: {
+              _obj: "paint",
+              horizontal: { _unit: "pixelsUnit", _value: startX },
+              vertical: { _unit: "pixelsUnit", _value: startY + index * lineGap },
+            },
+            textStyleRange: [{
+              _obj: "textStyleRange",
+              from: 0,
+              to: lines[index].length,
+              textStyle: {
+                _obj: "textStyle",
+                fontPostScriptName: style.font || "ArialMT",
+                size: { _unit: "pointsUnit", _value: fontSize },
+                fauxBold: !!style.bold,
+                fauxItalic: !!style.italic,
+                color,
+              },
+            }],
+          },
+          _options: { dialogOptions: "dontDisplay" },
+        }], { synchronousExecution: true, continueOnError: true });
+      }
+    }, { commandName: "Paste Styled Text Lines" });
+
+    setStatus(`Added ${lines.length} text layer(s).`, "success");
+  } catch (e) {
+    showError("Paste text failed", e);
+  }
+}
+
+function showNotesBoard() {
+  const existing = document.getElementById("notes-board-modal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "notes-board-modal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = `
+    <div class="modal-content layer-export-modal-content notes-board-modal-content">
+      <div class="modal-header">
+        <h3>Notes</h3>
+        <button class="modal-close" id="close-notes-board-modal">&times;</button>
+      </div>
+      <div class="notes-board-toolbar">
+        <button id="notes-zoom-out" type="button">-</button>
+        <span id="notes-zoom-label">${Math.round(notesBoardZoom * 100)}%</span>
+        <button id="notes-zoom-in" type="button">+</button>
+      </div>
+      <div class="notes-board-viewport">
+        <div id="notes-board-surface" class="notes-board-surface" contenteditable="true" spellcheck="true"></div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const surface = modal.querySelector("#notes-board-surface");
+  const label = modal.querySelector("#notes-zoom-label");
+  const saved = localStorage.getItem("slide_creator_notes_board_html_v1");
+  surface.innerHTML = saved || "";
+
+  const applyZoom = () => {
+    surface.style.transform = `scale(${notesBoardZoom})`;
+    label.textContent = `${Math.round(notesBoardZoom * 100)}%`;
+  };
+
+  modal.querySelector("#close-notes-board-modal").addEventListener("click", () => {
+    localStorage.setItem("slide_creator_notes_board_html_v1", surface.innerHTML);
+    modal.remove();
+  });
+  modal.querySelector("#notes-zoom-out").addEventListener("click", () => {
+    notesBoardZoom = Math.max(0.35, notesBoardZoom - 0.15);
+    applyZoom();
+  });
+  modal.querySelector("#notes-zoom-in").addEventListener("click", () => {
+    notesBoardZoom = Math.min(2.5, notesBoardZoom + 0.15);
+    applyZoom();
+  });
+  surface.addEventListener("input", () => {
+    localStorage.setItem("slide_creator_notes_board_html_v1", surface.innerHTML);
+  });
+  applyZoom();
+  setTimeout(() => surface.focus(), 40);
+}
+
+const LAYER_EFFECT_LABELS = {
+  solidFill: "Color Overlay",
+  gradientFill: "Gradient Overlay",
+  patternFill: "Pattern Overlay",
+  frameFX: "Stroke",
+  frameFXMulti: "Stroke",
+  dropShadow: "Drop Shadow",
+  dropShadowMulti: "Drop Shadow",
+  innerShadow: "Inner Shadow",
+  innerShadowMulti: "Inner Shadow",
+  outerGlow: "Outer Glow",
+  innerGlow: "Inner Glow",
+  bevelEmboss: "Bevel & Emboss",
+  chromeFX: "Satin",
+};
+
+const LAYER_EFFECT_META_KEYS = new Set([
+  "_obj",
+  "scale",
+  "masterFXSwitch",
+  "globalLightingAngle",
+  "globalLightingAltitude",
+]);
+
+function flattenLayerEffectValue(value) {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+}
+
+function prettifyLayerEffectKey(key) {
+  const cleaned = String(key || "")
+    .replace(/Multi$/, "")
+    .replace(/FX$/, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim();
+  return cleaned ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : "Effect";
+}
+
+function getLayerEffectLabels(layerEffects) {
+  if (!layerEffects || typeof layerEffects !== "object") return [];
+
+  const labels = [];
+  const seen = new Set();
+
+  Object.entries(layerEffects).forEach(([key, value]) => {
+    if (LAYER_EFFECT_META_KEYS.has(key)) return;
+
+    const hasDescriptor = flattenLayerEffectValue(value).some((item) =>
+      item && typeof item === "object" && Object.keys(item).length > 0
+    );
+    if (!hasDescriptor) return;
+
+    const label = LAYER_EFFECT_LABELS[key] || prettifyLayerEffectKey(key);
+    const signature = label.toLowerCase();
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    labels.push(label);
+  });
+
+  return labels;
+}
+
+function isLayerLockedForEffectRemoval(layer) {
+  try {
+    return !!(layer.locked || layer.allLocked || layer.pixelsLocked || layer.positionLocked);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function fetchLayerEffectDescriptors(layerEntries) {
+  const effectLayers = [];
+  const chunkSize = 30;
+
+  for (let index = 0; index < layerEntries.length; index += chunkSize) {
+    const chunk = layerEntries.slice(index, index + chunkSize);
+    const commands = chunk.map((layer) => ({
+      _obj: "multiGet",
+      _target: {
+        _ref: [
+          { _ref: "layer", _id: layer.id },
+          { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
+        ],
+      },
+      extendedReference: [["name", "layerEffects"]],
+      options: {
+        failOnMissingProperty: false,
+        failOnMissingElement: false,
+      },
+    }));
+
+    let results = [];
+    try {
+      results = await action.batchPlay(commands, {
+        continueOnError: true,
+        synchronousExecution: true,
+      });
+    } catch (_) {
+      results = [];
+    }
+
+    results.forEach((descriptor, resultIndex) => {
+      if (!descriptor || descriptor._obj === "error") return;
+      const layer = chunk[resultIndex];
+      const effectLabels = getLayerEffectLabels(descriptor.layerEffects);
+      if (effectLabels.length === 0) return;
+
+      effectLayers.push({
+        id: layer.id,
+        name: descriptor.name || layer.name || "Layer",
+        locked: isLayerLockedForEffectRemoval(layer),
+        effectLabels,
+      });
+    });
+  }
+
+  return effectLayers;
+}
+
+async function findLayersWithEffects(doc) {
+  const allLayers = getAllLayersRecursive(doc).filter((layer) =>
+    layer && Number.isFinite(Number(layer.id)) && !layer.isBackgroundLayer
+  );
+  if (allLayers.length === 0) return [];
+
+  let effectLayers = [];
+  await core.executeAsModal(async () => {
+    effectLayers = await fetchLayerEffectDescriptors(allLayers);
+  }, { commandName: "Scan Layer Effects" });
+
+  return effectLayers;
+}
+
+async function showLayerEffectsRemovalSelector() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("No document open", "error");
+    return;
+  }
+
+  setStatus("Scanning layers with effects...", "working");
+
+  let effectLayers = [];
+  try {
+    effectLayers = await findLayersWithEffects(doc);
+  } catch (e) {
+    showError("Layer effect scan failed", e);
+    return;
+  }
+
+  if (effectLayers.length === 0) {
+    setStatus("No layers with effects found", "error");
+    return;
+  }
+
+  const existingModal = document.getElementById("layer-effects-modal");
+  if (existingModal) existingModal.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "layer-effects-modal";
+  modal.className = "modal-overlay";
+
+  const modalContent = document.createElement("div");
+  modalContent.className = "modal-content layer-export-modal-content layer-effects-modal-content";
+
+  const header = document.createElement("div");
+  header.className = "modal-header";
+  header.innerHTML = `
+        <h3>Remove Layer Effects</h3>
+        <button class="modal-close" id="close-layer-effects-modal">&times;</button>
+    `;
+
+  const layerList = document.createElement("div");
+  layerList.className = "layer-export-list layer-effects-list";
+
+  effectLayers.forEach((layer) => {
+    const locked = layer.locked;
+    const item = document.createElement("div");
+    item.className = "layer-export-item layer-effects-item" + (locked ? " disabled" : "");
+    item.innerHTML = `
+            <input type="checkbox" class="layer-effects-checkbox" data-layer-id="${layer.id}" ${locked ? "disabled" : "checked"}>
+            <span class="layer-export-name layer-effects-name">${escapeHtml(layer.name)}</span>
+            <span class="layer-effects-meta">${escapeHtml(layer.effectLabels.join(", "))}${locked ? " - Locked" : ""}</span>
+        `;
+    layerList.appendChild(item);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "layer-export-actions layer-effects-actions";
+  actions.innerHTML = `
+        <button class="btn-select-all" id="select-all-effects">Select All</button>
+        <button class="btn-deselect-all" id="deselect-all-effects">Clear</button>
+        <button class="btn-export-selected btn-remove-layer-effects" id="btn-remove-layer-effects">Remove Effects</button>
+    `;
+
+  modalContent.appendChild(header);
+  modalContent.appendChild(layerList);
+  modalContent.appendChild(actions);
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
+
+  const getEnabledCheckboxes = () => Array.from(modal.querySelectorAll(".layer-effects-checkbox:not(:disabled)"));
+  const getSelectedIds = () => getEnabledCheckboxes()
+    .filter((checkbox) => checkbox.checked)
+    .map((checkbox) => Number(checkbox.dataset.layerId))
+    .filter((id) => Number.isFinite(id));
+
+  modal.querySelector("#close-layer-effects-modal").addEventListener("click", () => modal.remove());
+  modal.querySelector("#select-all-effects").addEventListener("click", () => {
+    getEnabledCheckboxes().forEach((checkbox) => { checkbox.checked = true; });
+  });
+  modal.querySelector("#deselect-all-effects").addEventListener("click", () => {
+    getEnabledCheckboxes().forEach((checkbox) => { checkbox.checked = false; });
+  });
+  modal.querySelectorAll(".layer-effects-item").forEach((item) => {
+    item.addEventListener("click", (event) => {
+      if (event.target && event.target.type === "checkbox") return;
+      const checkbox = item.querySelector(".layer-effects-checkbox");
+      if (!checkbox || checkbox.disabled) return;
+      checkbox.checked = !checkbox.checked;
+    });
+  });
+
+  const removeButton = modal.querySelector("#btn-remove-layer-effects");
+  removeButton.disabled = getEnabledCheckboxes().length === 0;
+  removeButton.addEventListener("click", async () => {
+    const layerIds = getSelectedIds();
+    if (layerIds.length === 0) {
+      setStatus("Select at least one layer with effects", "error");
+      return;
+    }
+
+    modal.remove();
+    await removeLayerEffectsByIds(layerIds);
+  });
+}
+
+function batchPlayHadError(results) {
+  return Array.isArray(results) && results.some((result) => result && result._obj === "error");
+}
+
+async function removeLayerEffectsProperty(layerId) {
+  try {
+    const results = await action.batchPlay([
+      {
+        _obj: "select",
+        _target: [{ _ref: "layer", _id: layerId }],
+        makeVisible: false,
+        _options: { dialogOptions: "dontDisplay" },
+      },
+      {
+        _obj: "delete",
+        _target: [
+          { _ref: "property", _property: "layerEffects" },
+          { _ref: "layer", _enum: "ordinal", _value: "targetEnum" },
+        ],
+        _options: { dialogOptions: "dontDisplay" },
+      },
+    ], {
+      continueOnError: true,
+      synchronousExecution: true,
+    });
+
+    return !batchPlayHadError(results);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function restoreActiveLayersById(layerIds) {
+  const ids = layerIds.filter((id) => Number.isFinite(id));
+  if (ids.length === 0) return;
+
+  try {
+    await action.batchPlay([{
+      _obj: "select",
+      _target: ids.map((id) => ({ _ref: "layer", _id: id })),
+      makeVisible: false,
+      _options: { dialogOptions: "dontDisplay" },
+    }], {
+      continueOnError: true,
+      synchronousExecution: true,
+    });
+  } catch (_) { }
+}
+
+async function removeLayerEffectsByIds(layerIds) {
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("No document open", "error");
+    return;
+  }
+
+  const uniqueLayerIds = [...new Set(layerIds)].filter((id) => Number.isFinite(id));
+  if (uniqueLayerIds.length === 0) {
+    setStatus("No layers selected", "error");
+    return;
+  }
+
+  const originalLayerIds = Array.from(doc.activeLayers || [])
+    .map((layer) => Number(layer.id))
+    .filter((id) => Number.isFinite(id));
+
+  setStatus(`Removing effects from ${uniqueLayerIds.length} layer(s)...`, "working");
+
+  try {
+    let removedCount = 0;
+
+    await core.executeAsModal(async () => {
+      for (const layerId of uniqueLayerIds) {
+        const removed = await removeLayerEffectsProperty(layerId);
+        if (removed) removedCount++;
+      }
+
+      await restoreActiveLayersById(originalLayerIds);
+    }, { commandName: "Remove Layer Effects" });
+
+    if (removedCount === uniqueLayerIds.length) {
+      setStatus(`Removed effects from ${removedCount} layer(s).`, "success");
+    } else if (removedCount > 0) {
+      setStatus(`Removed effects from ${removedCount} of ${uniqueLayerIds.length} layer(s).`, "success");
+    } else {
+      setStatus("Could not remove effects from the selected layers", "error");
+    }
+  } catch (e) {
+    showError("Remove effects failed", e);
+  }
 }
 
 async function exportDocument(format, customName) {
@@ -4907,8 +6186,10 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(updateScrollbar, 200);
         
         // Ensure scrollbar updates on DOM changes
-        const observer = new MutationObserver(updateScrollbar);
-        observer.observe(scrollArea, { childList: true, subtree: true, attributes: true });
+        if (typeof MutationObserver === "function") {
+          const observer = new MutationObserver(updateScrollbar);
+          observer.observe(scrollArea, { childList: true, subtree: true, attributes: true });
+        }
     }
 });
 
