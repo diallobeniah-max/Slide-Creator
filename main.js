@@ -4722,45 +4722,45 @@ async function showExportDialog(format) {
   modal.id = "export-choice-modal";
   modal.className = "modal-overlay";
   
-  // Get all layers for selection panel
-  const allLayers = getAllLayersFlat(doc);
+  const allLayers = getAllLayersFlat(doc).filter(l => l.name);
 
   modal.innerHTML = `
-    <div class="modal-content layer-export-modal-content compact-tool-modal" style="max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
-      <div class="modal-header">
-        <h3>Export as ${format.toUpperCase()}</h3>
-        <button class="modal-close" id="close-export-modal">&times;</button>
+    <div class="modal-content layer-export-modal-content compact-tool-modal" style="width: 320px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; padding: 16px;">
+      <div class="modal-header" style="margin-bottom: 16px;">
+        <h3 style="font-size: 14px; font-weight: 600;">Export as ${format.toUpperCase()}</h3>
+        <button class="modal-close" id="close-export-modal" style="font-size: 18px;">&times;</button>
       </div>
-      <div class="tool-modal-body" style="overflow-y: auto; flex: 1;">
-        <div class="field-group">
-            <span class="field-label">File Name</span>
-            <input id="export-name" class="modal-input" value="${escapeHtml(baseName)}" placeholder="File name">
+      
+      <div class="tool-modal-body" style="overflow-y: auto; flex: 1; padding: 0 4px;">
+        <div class="field-group" style="margin-bottom: 16px;">
+            <span class="field-label" style="font-size: 11px; margin-bottom: 6px; display: block; opacity: 0.8;">File Name</span>
+            <input id="export-name" class="modal-input" value="${escapeHtml(baseName)}" placeholder="File name" style="width: 100%; box-sizing: border-box;">
         </div>
 
-        <div class="export-options-tabs" style="display:flex; gap:8px; margin: 12px 0;">
-            <button id="tab-export-doc" class="tab-btn active" style="flex:1;">Entire Document</button>
-            <button id="tab-export-select" class="tab-btn" style="flex:1;">Select Layers</button>
+        <div class="export-options-tabs" style="display:flex; gap:6px; margin-bottom: 16px; background: rgba(255,255,255,0.03); padding: 4px; border-radius: 6px;">
+            <button id="tab-export-doc" class="tab-btn active" style="flex:1; padding: 6px; font-size: 10px;">Entire Doc</button>
+            <button id="tab-export-select" class="tab-btn" style="flex:1; padding: 6px; font-size: 10px;">Select Layers</button>
         </div>
 
         <div id="export-doc-panel" class="export-panel">
-            <p style="font-size:11px; opacity:0.7; margin-bottom:12px;">Exports the entire document as a single flattened ${format.toUpperCase()} file.</p>
-            <button id="btn-export-doc-now" type="button" class="tool-choice-btn primary">
-                <span>Export Entire Document</span>
+            <p style="font-size:10px; opacity:0.6; margin-bottom:16px; line-height: 1.4;">Flattened export of the entire canvas.</p>
+            <button id="btn-export-doc-now" type="button" class="tool-choice-btn primary" style="width: 100%; height: 38px;">
+                <span style="font-size: 12px;">Export Document</span>
             </button>
         </div>
 
         <div id="export-select-panel" class="export-panel hidden">
-            <p style="font-size:11px; opacity:0.7; margin-bottom:8px;">Select layers/groups to include in export.</p>
-            <div id="export-layer-list" style="max-height: 250px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius:4px; padding:4px;">
+            <p style="font-size:10px; opacity:0.6; margin-bottom:8px; line-height: 1.4;">Export specific visible items.</p>
+            <div id="export-layer-list" style="max-height: 180px; overflow-y: auto; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05); border-radius:4px; padding:2px;">
                 ${allLayers.map(layer => `
-                    <div class="layer-item" style="padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor:pointer;">
-                        <input type="checkbox" class="export-layer-check" data-id="${layer.id}" checked>
-                        <span style="font-size:12px; margin-left:8px;">${escapeHtml(layer.name)}</span>
+                    <div class="export-layer-row" style="display: flex; align-items: center; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.03); cursor:pointer;">
+                        <input type="checkbox" class="export-layer-check" data-id="${layer.id}" checked style="margin: 0; width: 12px; height: 12px;">
+                        <span style="font-size:11px; margin-left:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.9;">${escapeHtml(layer.name)}</span>
                     </div>
                 `).join('')}
             </div>
-            <button id="btn-export-select-now" type="button" class="tool-choice-btn primary" style="margin-top:12px;">
-                <span>Export Selected Items</span>
+            <button id="btn-export-select-now" type="button" class="tool-choice-btn primary" style="width: 100%; height: 38px; margin-top:12px;">
+                <span style="font-size: 12px;">Export Selection</span>
             </button>
         </div>
       </div>
@@ -4786,6 +4786,15 @@ async function showExportDialog(format) {
     tabDoc.classList.remove("active");
     selectPanel.classList.remove("hidden");
     docPanel.classList.add("hidden");
+  });
+
+  modal.querySelectorAll(".export-layer-row").forEach(row => {
+      row.addEventListener("click", (e) => {
+          if (e.target.type !== "checkbox") {
+              const cb = row.querySelector("input");
+              cb.checked = !cb.checked;
+          }
+      });
   });
 
   modal.querySelector("#close-export-modal").addEventListener("click", () => modal.remove());
@@ -4817,6 +4826,7 @@ async function performUnifiedExport(scope, format, customName, layerIds = []) {
 
   const safeName = customName.replace(/[<>:"/\\|?*]/g, "_");
   const file = await folder.createFile(`${safeName}.${format}`, { overwrite: true });
+  const originalDocId = doc.id;
 
   setStatus(`Exporting ${format.toUpperCase()}...`, "working");
 
@@ -4827,15 +4837,13 @@ async function performUnifiedExport(scope, format, customName, layerIds = []) {
       const allDocLayers = getAllLayersFlat(doc);
       
       if (scope === "selection") {
-        // Hide everything except selected layers
         allDocLayers.forEach(l => {
             initialVisibility.set(l.id, l.visible);
             l.visible = layerIds.includes(l.id);
         });
       }
 
-      // 1. STAMP VISIBLE (Merge Visible into new layer)
-      // This ensures we get exactly what is visible
+      // 1. STAMP VISIBLE — creates a new merged layer on top
       await action.batchPlay([
         {
           _obj: "mergeVisible",
@@ -4844,48 +4852,44 @@ async function performUnifiedExport(scope, format, customName, layerIds = []) {
         }
       ], { synchronousExecution: true });
 
-      const stampLayer = doc.activeLayers[0];
+      const stampLayerId = doc.activeLayers[0].id;
 
-      // 2. DUPLICATE TO NEW DOC FOR CLEAN EXPORT
-      await action.batchPlay([
-        {
-          _obj: "duplicate",
-          _target: [{ _ref: "layer", _id: stampLayer.id }],
-          name: "ExportTemp",
-          _options: { dialogOptions: "dontDisplay" }
-        }
-      ], { synchronousExecution: true });
-
-      const tempDoc = app.activeDocument;
-      
-      // 3. SAVE
+      // 2. SAVE DIRECTLY — no temp document needed!
+      // Use the Photoshop saveAs API on the current doc with the stamp visible
       if (format === "jpg") {
-        await tempDoc.saveAs.jpg(file, { quality: 12 }, true);
+        await doc.saveAs.jpg(file, { quality: 12 }, true);
       } else {
-        await tempDoc.saveAs.png(file, {}, true);
+        await doc.saveAs.png(file, {}, true);
       }
-      
-      // 4. CLEANUP
-      await tempDoc.close(constants.SaveOptions.DONOTSAVECHANGES);
-      
-      // Delete stamp layer from original
+
+      // 3. DELETE the stamp layer to restore original state
       await action.batchPlay([{
           _obj: "delete",
-          _target: [{ _ref: "layer", _id: stampLayer.id }]
+          _target: [{ _ref: "layer", _id: stampLayerId }],
+          _options: { dialogOptions: "dontDisplay" }
       }], { synchronousExecution: true });
 
+      // 4. RESTORE layer visibility if we changed it
       if (scope === "selection") {
-        // Restore visibility
         allDocLayers.forEach(l => {
             if (initialVisibility.has(l.id)) {
-                l.visible = initialVisibility.get(l.id);
+                try { l.visible = initialVisibility.get(l.id); } catch(_) {}
             }
         });
       }
 
+      // Ensure we're still on the original document
+      const origDoc = app.documents.find(d => d.id === originalDocId);
+      if (origDoc) app.activeDocument = origDoc;
+
       setStatus(`Exported: ${safeName}.${format}`, "success");
-    }, { commandName: "Unified Export" });
+    }, { commandName: "Export " + format.toUpperCase() });
   } catch (err) {
+    // Make sure original doc is still active even on error
+    try {
+      const origDoc = app.documents.find(d => d.id === originalDocId);
+      if (origDoc) app.activeDocument = origDoc;
+    } catch(_) {}
     showError("Export Failed", err);
   }
 }

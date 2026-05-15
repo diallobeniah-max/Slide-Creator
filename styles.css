@@ -1340,11 +1340,20 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     color: #c8c8c8;
 }
 
+.tools-export-row {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    width: 100%;
+}
+
 .tools-jpg-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100%;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
     height: 42px;
     border-radius: 8px;
     border: 1px solid rgba(179, 179, 179, 0.25);
@@ -1354,11 +1363,9 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     user-select: none;
     flex-shrink: 0;
     transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
-    margin-top: 14px !important;
 }
 
-.tools-jpg-btn > * { margin-right: 8px; }
-.tools-jpg-btn > *:last-child { margin-right: 0; }
+
 
 .tools-jpg-btn svg {
     width: 17px;
@@ -1401,7 +1408,9 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100%;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
     height: 38px;
     border-radius: 8px;
     border: 1px solid rgba(177, 177, 177, 0.25);
@@ -1411,7 +1420,6 @@ body.is-dragging-button, body.is-dragging-button * { cursor: grabbing !important
     user-select: none;
     flex-shrink: 0;
     transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
-    margin-top: 14px !important;
 }
 
 .tools-png-btn svg {
