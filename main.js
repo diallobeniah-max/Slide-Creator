@@ -1,10 +1,33 @@
-﻿const app = require("photoshop").app;
+const app = require("photoshop").app;
 const core = require("photoshop").core;
 const action = require("photoshop").action;
 const constants = require("photoshop").constants;
 const uxpStorage = require("uxp").storage;
 const uxpFs = require("uxp").storage.localFileSystem;
 const uxpFormats = uxpStorage && uxpStorage.formats ? uxpStorage.formats : {};
+
+async function createDocumentCompat(width, height, name, fill = constants.DocumentFill.TRANSPARENT, mode = constants.NewDocumentMode.RGB, resolution = 72) {
+  const safeWidth = Math.max(1, Math.round(Number(width) || 1));
+  const safeHeight = Math.max(1, Math.round(Number(height) || 1));
+  const safeName = String(name || "Untitled");
+
+  try {
+    return await app.documents.add({
+      width: safeWidth,
+      height: safeHeight,
+      resolution,
+      name: safeName,
+      mode,
+      fill,
+    });
+  } catch (objectError) {
+    try {
+      return await app.documents.add(safeWidth, safeHeight, resolution, safeName, mode, fill);
+    } catch (_) {
+      throw objectError;
+    }
+  }
+}
 
 // â”€â”€â”€ Presets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BUILTIN_PRESETS = {
@@ -31,7 +54,7 @@ const BUILTIN_PRESETS = {
 };
 const CUSTOM_PRESET_STORAGE_KEY = "slide_creator_custom_size_presets_v1";
 const CUSTOM_PRESET_SENTINEL = "custom";
-const DEFAULT_SIZE_PRESET_ID = "instagram";
+const DEFAULT_SIZE_PRESET_ID = CUSTOM_PRESET_SENTINEL;
 const PRESET_GROUP_ORDER = ["Custom", "YouTube", "Social", "Google Ads", "Presentation", "Print", "Photo"];
 const PRESET_GROUP_SENTINEL_PREFIX = "__group__:";
 const PRESET_ICON_SVGS = {
@@ -206,10 +229,10 @@ function buildPresetOptionMarkup() {
       const bLabel = getPresetLabel(b[1]);
       return aLabel.localeCompare(bLabel);
     });
-    items.forEach(([id, preset]) => chunks.push(buildPresetMenuItemMarkup(id, preset)));
     if (groupName === "Custom") {
       chunks.push(`<sp-menu-item class="preset-menu-item preset-menu-item-custom" value="${CUSTOM_PRESET_SENTINEL}">${getPresetIconMarkup("custom")}<span class="preset-menu-label">Custom...</span></sp-menu-item>`);
     }
+    items.forEach(([id, preset]) => chunks.push(buildPresetMenuItemMarkup(id, preset)));
   });
 
   if (!groups.has("Custom")) {
@@ -1027,7 +1050,7 @@ async function saveSelectedToLibrary() {
       const width = Math.max(1, Number(sourceDoc.width) || 2000);
       const height = Math.max(1, Number(sourceDoc.height) || 2000);
       await action.batchPlay([{ _obj: "copyMerged", _options: { dialogOptions: "dontDisplay" } }], {});
-      tempDoc = await app.documents.add(width, height, 72, "Library_Selection", constants.NewDocumentMode.RGB, constants.DocumentFill.TRANSPARENT);
+      tempDoc = await createDocumentCompat(width, height, "Library_Selection", constants.DocumentFill.TRANSPARENT);
       app.activeDocument = tempDoc;
       await action.batchPlay([{ _obj: "paste", _options: { dialogOptions: "dontDisplay" } }], {});
     }, { commandName: "Save Selection To Library" });
@@ -1047,7 +1070,7 @@ async function pasteClipboardToLibrary() {
   try {
     let tempDoc = null;
     await core.executeAsModal(async () => {
-      tempDoc = await app.documents.add(2200, 2200, 72, "Library_Clipboard", constants.NewDocumentMode.RGB, constants.DocumentFill.TRANSPARENT);
+      tempDoc = await createDocumentCompat(2200, 2200, "Library_Clipboard", constants.DocumentFill.TRANSPARENT);
       app.activeDocument = tempDoc;
       await action.batchPlay([{ _obj: "paste", _options: { dialogOptions: "dontDisplay" } }], { synchronousExecution: true });
     }, { commandName: "Paste Clipboard To Library" });
@@ -3439,6 +3462,7 @@ const BUTTON_DEFS = {
   "btn-rotate-right": { title: "Rotate 90Â° CW", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-4.95"/></svg>` },
   "btn-smart-object": { title: "Convert to Smart Objects", variant: "smart-object", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="8" y="8" width="8" height="8"/><line x1="3" y1="3" x2="8" y2="8"/><line x1="21" y1="3" x2="16" y2="8"/><line x1="3" y1="21" x2="8" y2="16"/><line x1="21" y1="21" x2="16" y2="16"/></svg>` },
   "btn-smart-merge": { title: "Merge all into ONE Smart Object", variant: "smart-merge", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="8" height="8" rx="1"/><path d="M10 6h4M6 10v4M18 10v4M10 18h4"/></svg>` },
+  "btn-stamp-visible": { title: "Stamp Selected/Visible Layers", variant: "stamp-visible", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="12" height="12" rx="1.5"/><path d="M8 8h6M8 12h4"/><path d="M9 20h10a2 2 0 0 0 2-2V8"/><path d="M4 20h5"/><path d="M6.5 17.5L9 20l4-4"/></svg>` },
   "btn-convert-layers": { title: "Convert to Layers", isPill: true, pillLabel: "Convert to Layers", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="6" rx="1.2"/><rect x="14" y="4" width="7" height="6" rx="1.2"/><rect x="3" y="14" width="7" height="6" rx="1.2"/><rect x="14" y="14" width="7" height="6" rx="1.2"/><path d="M10 7h4M10 17h4M12 10v4" stroke-linecap="round"/></svg>` },
   "btn-place-embed": { title: "Place Embedded", variant: "place-embed", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>` },
   "btn-paste-text-lines": { title: "Paste Styled Text Lines", isPill: true, pillLabel: "Paste Text", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M12 5v14"/><path d="M8 19h8"/><path d="M5 11h4"/><path d="M15 11h4"/></svg>` },
@@ -3461,7 +3485,7 @@ const BUTTON_DEFS = {
 };
 
 const DEFAULT_LAYOUT = [
-  [{ id: "g-transform", name: "Transform", buttons: ["btn-width", "btn-both", "btn-stretch-all", "btn-rotate-left", "btn-rotate-right", "btn-smart-object", "btn-smart-merge", "btn-place-embed", "btn-new-layer"] }],
+  [{ id: "g-transform", name: "Transform", buttons: ["btn-width", "btn-both", "btn-stretch-all", "btn-rotate-left", "btn-rotate-right", "btn-smart-object", "btn-smart-merge", "btn-stamp-visible", "btn-place-embed", "btn-new-layer"] }],
   [{ id: "g-text-tools", name: "Text", buttons: ["btn-convert-layers", "btn-paste-text-lines", "btn-notes-board", "btn-rasterize"] }],
   [{ id: "g-align", name: "Align", buttons: ["btn-align-left", "btn-align-h-center", "btn-align-right", "btn-align-top", "btn-align-v-center", "btn-align-bottom"] }],
   [{ id: "g-flip", name: "Flip", buttons: ["btn-distribute-h", "btn-distribute-v"] },
@@ -3534,6 +3558,33 @@ function ensureConvertToLayersButton(layoutState) {
 
   if (layoutState.length === 0) layoutState.push([]);
   layoutState[layoutState.length - 1].push(defaultTransformGroup);
+}
+
+function ensureStampVisibleButton(layoutState) {
+  const alreadyPresent = layoutState.some((row) =>
+    row.some((group) => (group.buttons || []).includes("btn-stamp-visible"))
+  );
+  if (alreadyPresent) return;
+
+  const transformGroup = layoutState.flat().find((group) => group.id === "g-transform");
+  if (transformGroup) {
+    transformGroup.buttons = Array.isArray(transformGroup.buttons) ? transformGroup.buttons : [];
+    const afterSmartMerge = transformGroup.buttons.indexOf("btn-smart-merge");
+    const beforePlaceEmbed = transformGroup.buttons.indexOf("btn-place-embed");
+    const insertAt = afterSmartMerge !== -1
+      ? afterSmartMerge + 1
+      : beforePlaceEmbed !== -1
+        ? beforePlaceEmbed
+        : transformGroup.buttons.length;
+    transformGroup.buttons.splice(insertAt, 0, "btn-stamp-visible");
+    return;
+  }
+
+  const defaultTransformGroup = cloneDefaultLayout().flat().find((group) => group.id === "g-transform");
+  if (!defaultTransformGroup) return;
+
+  if (layoutState.length === 0) layoutState.push([]);
+  layoutState[0].push(defaultTransformGroup);
 }
 
 function normalizeTextToolsRow(layoutState) {
@@ -3828,10 +3879,11 @@ function loadLayout() {
         );
         ensureRasterizeButton(layout);
         ensureConvertToLayersButton(layout);
+        ensureStampVisibleButton(layout);
         ensureRemoveEffectsButton(layout);
         normalizeTextToolsRow(layout);
         const allSaved = layout.flat().flatMap(g => g.buttons);
-        const newBtns = Object.keys(BUTTON_DEFS).filter(id => !allSaved.includes(id) && id !== "btn-rasterize" && id !== "btn-convert-layers" && id !== "btn-remove-effects" && id !== "btn-paste-text-lines" && id !== "btn-notes-board");
+        const newBtns = Object.keys(BUTTON_DEFS).filter(id => !allSaved.includes(id) && id !== "btn-rasterize" && id !== "btn-convert-layers" && id !== "btn-stamp-visible" && id !== "btn-remove-effects" && id !== "btn-paste-text-lines" && id !== "btn-notes-board");
         if (newBtns.length) layout[0][0].buttons.push(...newBtns);
         return;
       }
@@ -3896,6 +3948,10 @@ function renderLayout() {
 
   renderAutoSaveTimerCard(toolsFooter);
 
+  const exportRow = document.createElement("div");
+  exportRow.className = "tools-export-row";
+  toolsFooter.appendChild(exportRow);
+
   const jpgBtn = document.createElement("div");
   jpgBtn.id = "tools-export-jpg-btn";
   jpgBtn.className = "tools-jpg-btn";
@@ -3909,8 +3965,8 @@ function renderLayout() {
         <span>Export as JPG</span>
   `;
   jpgBtn.title = "Export document as JPG";
-  jpgBtn.addEventListener("click", () => showJpgExportChoiceDialog());
-  toolsFooter.appendChild(jpgBtn);
+  jpgBtn.addEventListener("click", () => showExportDialog("jpg"));
+  exportRow.appendChild(jpgBtn);
 
   // â”€â”€ PNG Export button â”€â”€
   const pngBtn = document.createElement("div");
@@ -3925,8 +3981,8 @@ function renderLayout() {
         <span>Export as PNG</span>
   `;
   pngBtn.title = "Export document as PNG";
-  pngBtn.addEventListener("click", () => exportAllLayersAsImages("png"));
-  toolsFooter.appendChild(pngBtn);
+  pngBtn.addEventListener("click", () => showExportDialog("png"));
+  exportRow.appendChild(pngBtn);
 
   // â”€â”€ Export All Layers button â”€â”€
   const exportAllBtn = document.createElement("div");
@@ -4239,6 +4295,7 @@ function fireAction(id) {
     "btn-convert-layers": convertToLayers,
     "btn-smart-object": convertToSmartObject,
     "btn-smart-merge": convertToSmartObjectMerged,
+    "btn-stamp-visible": stampVisibleLayers,
     "btn-new-layer": createNewLayer,
     "btn-width": () => resizeLayer("height"),
     "btn-both": () => resizeLayer("width"),
@@ -4385,6 +4442,67 @@ async function convertToSmartObjectMerged() {
     await action.batchPlay([{ _obj: "select", _target: refs, makeVisible: false, _options: { dialogOptions: "dontDisplay" } }], {});
     await action.batchPlay([{ _obj: "newPlacedLayer" }], {});
   }, { commandName: "Merge to Smart Object" });
+}
+
+async function runStampSelectedLayers(activeLayers) {
+  const refs = activeLayers
+    .filter((layer) => layer && !layer.locked)
+    .map((layer) => ({ _ref: "layer", _id: layer.id }));
+
+  if (refs.length < 2) return false;
+
+  try {
+    await action.batchPlay([
+      {
+        _obj: "select",
+        _target: refs,
+        makeVisible: false,
+        _options: { dialogOptions: "dontDisplay" },
+      },
+      {
+        _obj: "mergeLayersNew",
+        _options: { dialogOptions: "dontDisplay" },
+      },
+    ], {
+      synchronousExecution: true,
+      continueOnError: true,
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function stampVisibleLayers() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    showError("Stamp Visible failed", new Error("No active document."));
+    return;
+  }
+
+  const activeLayers = Array.from(doc.activeLayers || []);
+  const canStampSelection = activeLayers.filter((layer) => layer && !layer.locked).length > 1;
+
+  setStatus(canStampSelection ? "Stamping selected layers..." : "Stamping visible layers...", "working");
+  try {
+    let stampedSelection = false;
+    await core.executeAsModal(async () => {
+      if (canStampSelection) stampedSelection = await runStampSelectedLayers(activeLayers);
+
+      if (!stampedSelection) {
+        await action.batchPlay([{
+          _obj: "mergeVisible",
+          duplicate: true,
+          _options: { dialogOptions: "dontDisplay" },
+        }], { synchronousExecution: true });
+      }
+    }, { commandName: canStampSelection ? "Stamp Selected Layers" : "Stamp Visible Layers" });
+
+    setStatus(stampedSelection ? "Stamped selected layers into a new layer." : "Stamped visible layers into a new layer.", "success");
+    if (typeof refreshLayerList === "function") refreshLayerList();
+  } catch (e) {
+    showError("Stamp Visible failed", e);
+  }
 }
 
 async function createNewLayer() {
@@ -4589,152 +4707,202 @@ function getLayerBoundsRect(layer) {
   return { left, top, right, bottom, width: right - left, height: bottom - top };
 }
 
-async function showJpgExportChoiceDialog() {
+async function showExportDialog(format) {
   const doc = app.activeDocument;
   if (!doc) {
     setStatus("No document open", "error");
     return;
   }
 
-  const existingModal = document.getElementById("jpg-export-choice-modal");
+  const existingModal = document.getElementById("export-choice-modal");
   if (existingModal) existingModal.remove();
 
   const baseName = (doc.title || doc.name || "export").replace(/\.[^/.]+$/, "");
-  const hasSelectedLayer = Array.from(doc.activeLayers || []).filter((layer) => !layer.locked).length > 0;
   const modal = document.createElement("div");
-  modal.id = "jpg-export-choice-modal";
+  modal.id = "export-choice-modal";
   modal.className = "modal-overlay";
+  
+  // Get all layers for selection panel
+  const allLayers = getAllLayersFlat(doc);
+
   modal.innerHTML = `
-    <div class="modal-content layer-export-modal-content compact-tool-modal">
+    <div class="modal-content layer-export-modal-content compact-tool-modal" style="max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
       <div class="modal-header">
-        <h3>Export JPG</h3>
-        <button class="modal-close" id="close-jpg-export-modal">&times;</button>
+        <h3>Export as ${format.toUpperCase()}</h3>
+        <button class="modal-close" id="close-export-modal">&times;</button>
       </div>
-      <div class="tool-modal-body">
-        <input id="jpg-export-name" class="modal-input" value="${escapeHtml(baseName)}" placeholder="File name">
-        <button id="jpg-export-selected-layer" type="button" class="tool-choice-btn" ${hasSelectedLayer ? "" : "disabled"}>
-          <span>Export selected layer as JPG</span>
-        </button>
-        <button id="jpg-export-document" type="button" class="tool-choice-btn primary">
-          <span>Export entire document as JPG</span>
-        </button>
+      <div class="tool-modal-body" style="overflow-y: auto; flex: 1;">
+        <div class="field-group">
+            <span class="field-label">File Name</span>
+            <input id="export-name" class="modal-input" value="${escapeHtml(baseName)}" placeholder="File name">
+        </div>
+
+        <div class="export-options-tabs" style="display:flex; gap:8px; margin: 12px 0;">
+            <button id="tab-export-doc" class="tab-btn active" style="flex:1;">Entire Document</button>
+            <button id="tab-export-select" class="tab-btn" style="flex:1;">Select Layers</button>
+        </div>
+
+        <div id="export-doc-panel" class="export-panel">
+            <p style="font-size:11px; opacity:0.7; margin-bottom:12px;">Exports the entire document as a single flattened ${format.toUpperCase()} file.</p>
+            <button id="btn-export-doc-now" type="button" class="tool-choice-btn primary">
+                <span>Export Entire Document</span>
+            </button>
+        </div>
+
+        <div id="export-select-panel" class="export-panel hidden">
+            <p style="font-size:11px; opacity:0.7; margin-bottom:8px;">Select layers/groups to include in export.</p>
+            <div id="export-layer-list" style="max-height: 250px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius:4px; padding:4px;">
+                ${allLayers.map(layer => `
+                    <div class="layer-item" style="padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor:pointer;">
+                        <input type="checkbox" class="export-layer-check" data-id="${layer.id}" checked>
+                        <span style="font-size:12px; margin-left:8px;">${escapeHtml(layer.name)}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <button id="btn-export-select-now" type="button" class="tool-choice-btn primary" style="margin-top:12px;">
+                <span>Export Selected Items</span>
+            </button>
+        </div>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
 
-  const getName = () => {
-    const input = modal.querySelector("#jpg-export-name");
-    return String(input && input.value ? input.value : baseName).trim() || baseName;
-  };
-  modal.querySelector("#close-jpg-export-modal").addEventListener("click", () => modal.remove());
-  modal.querySelector("#jpg-export-selected-layer").addEventListener("click", async () => {
-    modal.remove();
-    await exportJpgWithWhiteBackground("selected", getName());
+  const nameInput = modal.querySelector("#export-name");
+  const docPanel = modal.querySelector("#export-doc-panel");
+  const selectPanel = modal.querySelector("#export-select-panel");
+  const tabDoc = modal.querySelector("#tab-export-doc");
+  const tabSelect = modal.querySelector("#tab-export-select");
+
+  tabDoc.addEventListener("click", () => {
+    tabDoc.classList.add("active");
+    tabSelect.classList.remove("active");
+    docPanel.classList.remove("hidden");
+    selectPanel.classList.add("hidden");
   });
-  modal.querySelector("#jpg-export-document").addEventListener("click", async () => {
+
+  tabSelect.addEventListener("click", () => {
+    tabSelect.classList.add("active");
+    tabDoc.classList.remove("active");
+    selectPanel.classList.remove("hidden");
+    docPanel.classList.add("hidden");
+  });
+
+  modal.querySelector("#close-export-modal").addEventListener("click", () => modal.remove());
+
+  modal.querySelector("#btn-export-doc-now").addEventListener("click", async () => {
+    const name = nameInput.value.trim() || baseName;
     modal.remove();
-    await exportJpgWithWhiteBackground("document", getName());
+    await performUnifiedExport("document", format, name);
+  });
+
+  modal.querySelector("#btn-export-select-now").addEventListener("click", async () => {
+    const name = nameInput.value.trim() || baseName;
+    const selectedIds = Array.from(modal.querySelectorAll(".export-layer-check:checked")).map(cb => Number(cb.dataset.id));
+    if (selectedIds.length === 0) {
+        setStatus("No layers selected", "error");
+        return;
+    }
+    modal.remove();
+    await performUnifiedExport("selection", format, name, selectedIds);
   });
 }
 
-async function exportJpgWithWhiteBackground(scope, customName) {
+async function performUnifiedExport(scope, format, customName, layerIds = []) {
   const doc = app.activeDocument;
-  if (!doc) {
-    setStatus("No document open", "error");
-    return;
-  }
+  if (!doc) return;
 
   const folder = await uxpFs.getFolder();
-  if (!folder) {
-    setStatus("Export cancelled", "");
-    return;
-  }
+  if (!folder) return;
 
-  const safeName = String(customName || "export").replace(/[<>:"/\\|?*]/g, "_");
-  const file = await folder.createFile(`${safeName}.jpg`, { overwrite: true });
-  const originalDocId = doc.id;
+  const safeName = customName.replace(/[<>:"/\\|?*]/g, "_");
+  const file = await folder.createFile(`${safeName}.${format}`, { overwrite: true });
 
-  setStatus("Exporting JPG with solid background...", "working");
+  setStatus(`Exporting ${format.toUpperCase()}...`, "working");
 
   try {
     await core.executeAsModal(async () => {
-      let width = Math.max(1, Math.round(Number(doc.width) || 1));
-      let height = Math.max(1, Math.round(Number(doc.height) || 1));
-      let targetLayer = null;
-
-      if (scope === "selected") {
-        targetLayer = Array.from(doc.activeLayers || []).find((layer) => !layer.locked);
-        if (!targetLayer) throw new Error("Select one layer to export as JPG.");
-        const rect = getLayerBoundsRect(targetLayer);
-        if (rect && rect.width > 0 && rect.height > 0) {
-          width = Math.max(1, Math.round(rect.width));
-          height = Math.max(1, Math.round(rect.height));
-        }
+      // Record initial state
+      const initialVisibility = new Map();
+      const allDocLayers = getAllLayersFlat(doc);
+      
+      if (scope === "selection") {
+        // Hide everything except selected layers
+        allDocLayers.forEach(l => {
+            initialVisibility.set(l.id, l.visible);
+            l.visible = layerIds.includes(l.id);
+        });
       }
 
-      const tempFill = constants.DocumentFill.WHITE || constants.DocumentFill.BACKGROUNDCOLOR || constants.DocumentFill.TRANSPARENT;
-      const tempDoc = await app.documents.add(width, height, 72, "JPG_Export", constants.NewDocumentMode.RGB, tempFill);
-      app.activeDocument = tempDoc;
+      // 1. STAMP VISIBLE (Merge Visible into new layer)
+      // This ensures we get exactly what is visible
       await action.batchPlay([
-        { _obj: "selectAll", _options: { dialogOptions: "dontDisplay" } },
         {
-          _obj: "fill",
-          using: { _enum: "fillContents", _value: "color" },
-          color: { _obj: "RGBColor", red: 255, green: 255, blue: 255 },
-          opacity: { _unit: "percentUnit", _value: 100 },
-          mode: { _enum: "blendMode", _value: "normal" },
-          _options: { dialogOptions: "dontDisplay" },
-        },
-        { _obj: "deselect", _options: { dialogOptions: "dontDisplay" } },
-      ], { synchronousExecution: true, continueOnError: true });
-      app.activeDocument = doc;
+          _obj: "mergeVisible",
+          duplicate: true,
+          _options: { dialogOptions: "dontDisplay" }
+        }
+      ], { synchronousExecution: true });
 
-      if (targetLayer) {
-        await action.batchPlay([{
-          _obj: "select",
-          _target: [{ _ref: "layer", _id: targetLayer.id }],
-          makeVisible: false,
-          _options: { dialogOptions: "dontDisplay" },
-        }], { synchronousExecution: true });
+      const stampLayer = doc.activeLayers[0];
+
+      // 2. DUPLICATE TO NEW DOC FOR CLEAN EXPORT
+      await action.batchPlay([
+        {
+          _obj: "duplicate",
+          _target: [{ _ref: "layer", _id: stampLayer.id }],
+          name: "ExportTemp",
+          _options: { dialogOptions: "dontDisplay" }
+        }
+      ], { synchronousExecution: true });
+
+      const tempDoc = app.activeDocument;
+      
+      // 3. SAVE
+      if (format === "jpg") {
+        await tempDoc.saveAs.jpg(file, { quality: 12 }, true);
+      } else {
+        await tempDoc.saveAs.png(file, {}, true);
       }
-
-      if (!targetLayer) {
-        await action.batchPlay([{ _obj: "selectAll", _options: { dialogOptions: "dontDisplay" } }], {
-          synchronousExecution: true,
-          continueOnError: true,
-        });
-      }
-
-      await action.batchPlay([{ _obj: "copyMerge", _options: { dialogOptions: "dontDisplay" } }], {
-        synchronousExecution: true,
-        continueOnError: true,
-      });
-      if (!targetLayer) {
-        await action.batchPlay([{ _obj: "deselect", _options: { dialogOptions: "dontDisplay" } }], {
-          synchronousExecution: true,
-          continueOnError: true,
-        });
-      }
-
-      app.activeDocument = tempDoc;
-      await action.batchPlay([{ _obj: "paste", _options: { dialogOptions: "dontDisplay" } }], {
-        synchronousExecution: true,
-        continueOnError: true,
-      });
-      await tempDoc.flatten();
-      await tempDoc.saveAs.jpg(file, { quality: 12 }, true);
+      
+      // 4. CLEANUP
       await tempDoc.close(constants.SaveOptions.DONOTSAVECHANGES);
+      
+      // Delete stamp layer from original
+      await action.batchPlay([{
+          _obj: "delete",
+          _target: [{ _ref: "layer", _id: stampLayer.id }]
+      }], { synchronousExecution: true });
 
-      const originalDoc = app.documents.find((item) => item.id === originalDocId);
-      if (originalDoc) app.activeDocument = originalDoc;
-    }, { commandName: "Export JPG With Background" });
+      if (scope === "selection") {
+        // Restore visibility
+        allDocLayers.forEach(l => {
+            if (initialVisibility.has(l.id)) {
+                l.visible = initialVisibility.get(l.id);
+            }
+        });
+      }
 
-    setStatus(`Exported "${safeName}.jpg"`, "success");
-  } catch (e) {
-    showError("JPG export failed", e);
+      setStatus(`Exported: ${safeName}.${format}`, "success");
+    }, { commandName: "Unified Export" });
+  } catch (err) {
+    showError("Export Failed", err);
   }
 }
+
+function getAllLayersFlat(container) {
+  let result = [];
+  const layers = Array.from(container.layers || []);
+  layers.forEach(layer => {
+    result.push(layer);
+    if (layer.layers && layer.layers.length > 0) {
+      result = result.concat(getAllLayersFlat(layer));
+    }
+  });
+  return result;
+}
+
+
 
 function showStyledTextPasteDialog() {
   const existing = document.getElementById("styled-text-paste-modal");
@@ -5443,7 +5611,7 @@ async function doExportSelectedLayers(layerIds) {
           const layerW = Math.max(1, Math.round(bounds.right - bounds.left));
           const layerH = Math.max(1, Math.round(bounds.bottom - bounds.top));
 
-          const newDoc = await app.documents.add(layerW, layerH, 72, "Export_" + i, constants.NewDocumentMode.RGB, constants.DocumentFill.TRANSPARENT);
+          const newDoc = await createDocumentCompat(layerW, layerH, "Export_" + i, constants.DocumentFill.TRANSPARENT);
 
           app.activeDocument = doc;
 
@@ -5517,6 +5685,7 @@ async function exportAllLayersAsImages(format) {
 
     await core.executeAsModal(async () => {
       let exportedCount = 0;
+      const originalDocId = doc.id;
 
       for (let i = 0; i < allLayers.length; i++) {
         const layer = allLayers[i];
@@ -5527,40 +5696,73 @@ async function exportAllLayersAsImages(format) {
         const layerName = layer.name.replace(/[<>:"/\\|?*]/g, "_") || `Layer_${i + 1}`;
 
         try {
+          const bounds = getLayerBoundsRect(layer) || {};
+          const layerW = Math.max(1, Math.round((bounds.right || 0) - (bounds.left || 0)) || Math.round(Number(doc.width) || 1));
+          const layerH = Math.max(1, Math.round((bounds.bottom || 0) - (bounds.top || 0)) || Math.round(Number(doc.height) || 1));
+          const tempFill = format === "jpg"
+            ? (constants.DocumentFill.WHITE || constants.DocumentFill.BACKGROUNDCOLOR || constants.DocumentFill.TRANSPARENT)
+            : constants.DocumentFill.TRANSPARENT;
+          const tempDoc = await createDocumentCompat(layerW, layerH, `Export_${i + 1}`, tempFill);
+
+          app.activeDocument = doc;
           await action.batchPlay([
             {
               _obj: "select",
               _target: [{ _ref: "layer", _id: layerId }],
               makeVisible: false,
-              _options: { dialogOptions: "dontDisplay" }
-            },
-            {
-              _obj: "copyMerge",
-              _options: { dialogOptions: "dontDisplay" }
-            },
-            {
-              _obj: "paste",
-              _options: { dialogOptions: "dontDisplay" }
+              _options: { dialogOptions: "dontDisplay" },
             }
-          ], {});
+          ], {
+            synchronousExecution: true,
+            continueOnError: true,
+          });
 
-          const tempDoc = app.activeDocument;
-          if (tempDoc) {
-            const fileName = `${layerName}.${ext}`;
-            const fileEntry = await exportDir.createFile(fileName, { overwrite: true });
+          await action.batchPlay([{ _obj: "copy", _options: { dialogOptions: "dontDisplay" } }], {
+            synchronousExecution: true,
+            continueOnError: true,
+          });
 
-            if (format === "jpg") {
-              await tempDoc.saveAs.jpg(fileEntry, { quality: 12 }, true);
-            } else {
-              await tempDoc.saveAs.png(fileEntry, {}, true);
-            }
-
-            await tempDoc.close(constants.SaveOptions.DONOTSAVECHANGES);
-            exportedCount++;
-            setStatus(`Exported ${exportedCount} layer(s)...`, "working");
+          app.activeDocument = tempDoc;
+          if (format === "jpg") {
+            await action.batchPlay([
+              { _obj: "selectAll", _options: { dialogOptions: "dontDisplay" } },
+              {
+                _obj: "fill",
+                using: { _enum: "fillContents", _value: "color" },
+                color: { _obj: "RGBColor", red: 255, green: 255, blue: 255 },
+                opacity: { _unit: "percentUnit", _value: 100 },
+                mode: { _enum: "blendMode", _value: "normal" },
+                _options: { dialogOptions: "dontDisplay" },
+              },
+              { _obj: "deselect", _options: { dialogOptions: "dontDisplay" } },
+            ], {
+              synchronousExecution: true,
+              continueOnError: true,
+            });
           }
+          await action.batchPlay([{ _obj: "paste", _options: { dialogOptions: "dontDisplay" } }], {
+            synchronousExecution: true,
+            continueOnError: true,
+          });
+          if (format === "jpg") await tempDoc.flatten();
+
+          const fileName = `${layerName}.${ext}`;
+          const fileEntry = await exportDir.createFile(fileName, { overwrite: true });
+          if (format === "jpg") {
+            await tempDoc.saveAs.jpg(fileEntry, { quality: 12 }, true);
+          } else {
+            await tempDoc.saveAs.png(fileEntry, {}, true);
+          }
+
+          await tempDoc.close(constants.SaveOptions.DONOTSAVECHANGES);
+          const originalDoc = app.documents.find((item) => item.id === originalDocId);
+          if (originalDoc) app.activeDocument = originalDoc;
+          exportedCount++;
+          setStatus(`Exported ${exportedCount} layer(s)...`, "working");
         } catch (e) {
           console.warn(`Failed to export layer: ${layerName}`, e);
+          const originalDoc = app.documents.find((item) => item.id === originalDocId);
+          if (originalDoc) app.activeDocument = originalDoc;
         }
       }
 
@@ -6200,43 +6402,59 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-// Force sp-dropdown menus to always scroll to top when opened
+// Force sp-dropdown menus to always scroll to top when opened and inject sleek scrollbar styles
 document.addEventListener('sp-opened', (e) => {
     if (e.target && e.target.tagName === 'SP-DROPDOWN') {
-        setTimeout(() => {
-            const menu = e.target.querySelector('sp-menu');
+        const dropdown = e.target;
+
+        const applySleekStyles = () => {
+            const menu = dropdown.querySelector('sp-menu');
             if (menu) {
+                // Force scroll to top
                 menu.scrollTop = 0;
                 
-                // Inject style directly into the sp-menu's shadowRoot if it exists
+                // Inject style directly into the sp-menu's shadowRoot
                 if (menu.shadowRoot && !menu.shadowRoot.querySelector('#injected-scroll-style-menu')) {
                     const style = document.createElement('style');
                     style.id = 'injected-scroll-style-menu';
                     style.textContent = `
-                        ::-webkit-scrollbar { width: 4px !important; }
-                        ::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
-                        ::-webkit-scrollbar-thumb { border-radius: 4px !important; background: rgba(128,128,128,0.5) !important; }
-                        *::-webkit-scrollbar { width: 4px !important; }
-                        *::-webkit-scrollbar-button { display: none !important; }
+                        :host { scrollbar-width: thin !important; }
+                        ::-webkit-scrollbar { width: 2px !important; height: 3px !important; }
+                        ::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; min-width: 0 !important; min-height: 0 !important; }
+                        ::-webkit-scrollbar-track { background: transparent !important; }
+                        ::-webkit-scrollbar-thumb { border-radius: 8px !important; background: rgba(128,128,128,0.35) !important; border: 0 !important; background-clip: padding-box !important; }
+                        ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.6) !important; }
+                        * { scrollbar-width: thin !important; }
+                        *::-webkit-scrollbar { width: 2px !important; height: 3px !important; }
+                        *::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
                     `;
                     menu.shadowRoot.appendChild(style);
                 }
             }
             
-            // Also inject into the popover wrapper if that exists
-            const popover = e.target.shadowRoot ? e.target.shadowRoot.querySelector("sp-popover") : null;
+            // Try to find the popover in the host's shadow root
+            const popover = dropdown.shadowRoot ? dropdown.shadowRoot.querySelector("sp-popover") : null;
             if (popover && popover.shadowRoot && !popover.shadowRoot.querySelector('#injected-scroll-style-popover')) {
                 const style = document.createElement('style');
                 style.id = 'injected-scroll-style-popover';
                 style.textContent = `
-                    ::-webkit-scrollbar { width: 4px !important; }
-                    ::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
-                    ::-webkit-scrollbar-thumb { border-radius: 4px !important; background: rgba(128,128,128,0.5) !important; }
-                    *::-webkit-scrollbar { width: 4px !important; }
-                    *::-webkit-scrollbar-button { display: none !important; }
+                    :host { scrollbar-width: thin !important; }
+                    ::-webkit-scrollbar { width: 2px !important; height: 3px !important; }
+                    ::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; min-width: 0 !important; min-height: 0 !important; }
+                    ::-webkit-scrollbar-track { background: transparent !important; }
+                    ::-webkit-scrollbar-thumb { border-radius: 8px !important; background: rgba(128,128,128,0.35) !important; border: 0 !important; background-clip: padding-box !important; }
+                    * { scrollbar-width: thin !important; }
+                    *::-webkit-scrollbar { width: 2px !important; height: 3px !important; }
+                    *::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
                 `;
                 popover.shadowRoot.appendChild(style);
             }
-        }, 10);
+        };
+
+        // Run multiple times to ensure we catch the UI after UXP internal processing
+        applySleekStyles();
+        setTimeout(applySleekStyles, 10);
+        setTimeout(applySleekStyles, 50);
+        setTimeout(applySleekStyles, 150);
     }
 });
