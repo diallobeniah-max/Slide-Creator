@@ -130,6 +130,19 @@
             </svg>
           </div>
 
+          <div class="tab-icon-divider"></div>
+
+          <div role="button" tabindex="-1" class="tab-icon-btn" data-tab-button="macros" title="Macros"
+            aria-label="Macros" aria-selected="false">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="8" />
+              <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+              <path d="M17 7l2-2" />
+              <path d="M7 17l-2 2" />
+            </svg>
+          </div>
+
         </nav>
       </section>
     </div>
@@ -301,6 +314,12 @@
               height, fits the active image to the slide height, and can
               optionally create a sharper 2x layout.
             </p>
+
+            <!-- NEW OPTIMIZATION BUTTONS -->
+            <div class="row-2" style="display: flex; gap: 8px; margin-top: 8px;">
+              <sp-button id="btn-optimize-canvas" variant="secondary" size="s" style="flex: 1;">Optimize Canvas</sp-button>
+              <sp-button id="btn-scale-for-export" variant="secondary" size="s" style="flex: 1;">Scale for Export</sp-button>
+            </div>
           </section>
 
           <section class="card">
@@ -691,6 +710,60 @@
         <section class="tab-panel" data-tab-panel="tools">
           <div id="panel-root" class="auto-resize-root"></div>
         </section>
+
+        <section class="tab-panel" data-tab-panel="macros">
+          <section class="card card-emphasis macro-recorder-card">
+            <div class="section-header macro-section-header">
+              <div>
+                <span class="section-kicker">Automate</span>
+                <span class="section-title">Macros</span>
+              </div>
+              <div class="macro-toolbar">
+                <button id="btn-macro-record" type="button" class="macro-record-btn" data-action-button>Record</button>
+                <button id="btn-macro-save" type="button" class="macro-save-btn" data-action-button>Save</button>
+                <button id="btn-macro-refresh" type="button" class="macro-refresh-btn" data-action-button title="Refresh macros" aria-label="Refresh macros">&#8635;</button>
+              </div>
+            </div>
+            <div class="macro-name-row">
+              <sp-textfield id="macro-name-input" value="" placeholder="Macro name" size="s"></sp-textfield>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-header macro-list-header">
+              <div>
+                <span class="section-kicker">Actions</span>
+                <span class="section-title">Saved Macros</span>
+              </div>
+              <div class="macro-order-buttons" aria-label="Reorder selected macro">
+                <button id="btn-macro-move-up-header" type="button" title="Move selected macro up" aria-label="Move selected macro up" data-action-button>&#8593;</button>
+                <button id="btn-macro-move-down-header" type="button" title="Move selected macro down" aria-label="Move selected macro down" data-action-button>&#8595;</button>
+              </div>
+            </div>
+            <div id="macro-actions-list" class="macro-actions-list">
+              <span class="no-layers-msg">No Photoshop actions found.</span>
+            </div>
+          </section>
+        </section>
+      </div>
+
+      <div id="macro-edit-modal" class="modal-overlay hidden" aria-hidden="true">
+        <div class="layer-export-modal-content macro-edit-modal-content" role="dialog" aria-modal="true" aria-labelledby="macro-edit-title">
+          <div class="modal-header">
+            <h3 id="macro-edit-title">Edit Macro</h3>
+            <button id="macro-edit-close" class="modal-close" type="button" aria-label="Close macro editor">&times;</button>
+          </div>
+          <div class="macro-edit-body">
+            <div class="modal-field-group">
+              <span class="modal-field-label">Macro name</span>
+              <input id="macro-edit-name" type="text" maxlength="80" class="modal-input" />
+            </div>
+          </div>
+          <div class="modal-actions macro-edit-actions">
+            <button type="button" class="btn-cancel danger" id="macro-edit-delete">Delete</button>
+            <button type="button" class="btn-confirm" id="macro-edit-save">Save</button>
+          </div>
+        </div>
       </div>
       <div class="custom-scrollbar" id="custom-scrollbar">
         <div class="custom-scrollbar-thumb" id="custom-thumb"></div>
@@ -698,7 +771,12 @@
     </div>
 
     <div class="status-wrap hidden" id="status-wrap" aria-hidden="true">
-      <div class="status-bar hidden" id="status-bar" aria-live="polite"></div>
+      <div class="status-head">
+        <div class="status-bar hidden" id="status-bar" aria-live="polite"></div>
+        <button id="btn-copy-status" type="button" class="status-copy-btn hidden" title="Copy message" aria-label="Copy message">
+          <span aria-hidden="true">&#10697;</span>
+        </button>
+      </div>
       <div class="error-log hidden" id="error-log"></div>
     </div>
 
