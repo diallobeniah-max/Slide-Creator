@@ -3951,6 +3951,7 @@ const BUTTON_DEFS = {
   "btn-convert-layers": { title: "Convert to Layers", isPill: true, pillLabel: "Convert to Layers", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="6" rx="1.2"/><rect x="14" y="4" width="7" height="6" rx="1.2"/><rect x="3" y="14" width="7" height="6" rx="1.2"/><rect x="14" y="14" width="7" height="6" rx="1.2"/><path d="M10 7h4M10 17h4M12 10v4" stroke-linecap="round"/></svg>` },
   "btn-place-embed": { title: "Place Embedded", variant: "place-embed", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>` },
   "btn-paste-text-lines": { title: "Paste Styled Text Lines", isPill: true, pillLabel: "Paste Text", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M12 5v14"/><path d="M8 19h8"/><path d="M5 11h4"/><path d="M15 11h4"/></svg>` },
+  "btn-text-manager": { title: "Text Manager", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>` },
   "btn-notes-board": { title: "Notes Board", isPill: true, pillLabel: "Notes", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h5"/><path d="M15 15l2 2 3-4"/></svg>` },
   "btn-new-layer": { title: "New Layer", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>` },
   "btn-rasterize": { title: "Rasterize Layer", isPill: true, pillLabel: "Rasterize", pillVariant: "rasterize", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="8" rx="1.5"/><path d="M15 5h2M19 5h.01M15 9h.01M19 9h2M15 13h2M19 13h.01M15 17h.01M19 17h2"/><path d="M11 8l4 4"/></svg>` },
@@ -3973,7 +3974,7 @@ const BUTTON_DEFS = {
 
 const DEFAULT_LAYOUT = [
   [{ id: "g-transform", name: "Transform", buttons: ["btn-width", "btn-both", "btn-stretch-all", "btn-rotate-left", "btn-rotate-right", "btn-smart-object", "btn-smart-merge", "btn-default-export-folder", "btn-stamp-visible", "btn-place-embed", "btn-new-layer"] }],
-  [{ id: "g-text-tools", name: "Text", buttons: ["btn-convert-layers", "btn-paste-text-lines", "btn-notes-board", "btn-rasterize", "btn-remove-effects", "btn-guide-layer-order", "btn-duplicate-effects"] }],
+  [{ id: "g-text-tools", name: "Text", buttons: ["btn-convert-layers", "btn-paste-text-lines", "btn-text-manager", "btn-notes-board", "btn-rasterize", "btn-remove-effects", "btn-guide-layer-order", "btn-duplicate-effects"] }],
   [{ id: "g-align", name: "Align", buttons: ["btn-align-left", "btn-align-h-center", "btn-align-right", "btn-align-top", "btn-align-v-center", "btn-align-bottom"] }],
   [{ id: "g-flip", name: "Flip", buttons: ["btn-distribute-h", "btn-distribute-v"] },
   { id: "g-actions", name: "Actions", buttons: ["btn-visibility", "btn-invert", "btn-delete"] },
@@ -4968,6 +4969,7 @@ function fireAction(id) {
     "btn-rotate-right": () => rotateLayer(90),
     "btn-place-embed": placeEmbedded,
     "btn-paste-text-lines": showStyledTextPasteDialog,
+    "btn-text-manager": showTextManagerDialog,
     "btn-notes-board": showNotesBoard,
     "btn-guide-layer-order": showGuideLayerOrderDialog,
     "btn-align-left": () => alignLayersToCanvas("left"),
@@ -6282,6 +6284,198 @@ function showStyledTextPasteDialog() {
   });
   syncModeUI();
   setTimeout(() => source.focus(), 40);
+}
+
+async function fetchTextDescriptors(layers) {
+  const chunkSize = 30;
+  const results = [];
+  for (let i = 0; i < layers.length; i += chunkSize) {
+    const chunk = layers.slice(i, i + chunkSize);
+    const commands = chunk.map((layer) => ({
+      _obj: "multiGet",
+      _target: {
+        _ref: [
+          { _ref: "layer", _id: layer.id },
+          { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
+        ],
+      },
+      extendedReference: [["name", "textKey"]],
+      options: { failOnMissingProperty: false, failOnMissingElement: false },
+    }));
+
+    let chunkResults = [];
+    try {
+      chunkResults = await action.batchPlay(commands, { synchronousExecution: true, continueOnError: true });
+    } catch (_) { chunkResults = []; }
+
+    chunkResults.forEach((descriptor, idx) => {
+      if (!descriptor || descriptor._obj === "error") return;
+      const layer = chunk[idx];
+      results.push({ id: layer.id, name: descriptor.name || layer.name || "Layer", descriptor });
+    });
+  }
+  return results;
+}
+
+function extractTextFromDescriptor(descriptor) {
+  if (!descriptor) return "";
+  // descriptor may include textKey as string or object
+  if (typeof descriptor.textKey === "string") return descriptor.textKey;
+  if (descriptor.textKey && typeof descriptor.textKey === "object") {
+    if (typeof descriptor.textKey.textKey === "string") return descriptor.textKey.textKey;
+    if (descriptor.textKey._value) return String(descriptor.textKey._value);
+  }
+  if (typeof descriptor.contents === "string") return descriptor.contents;
+  return "";
+}
+
+async function showTextManagerDialog() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("No document open", "error");
+    return;
+  }
+
+  setStatus("Scanning text layers...", "working");
+  const allLayers = getAllLayersRecursive(doc).filter((l) => l && l.kind === "text");
+  if (!allLayers.length) {
+    setStatus("No text layers found", "error");
+    return;
+  }
+
+  let textEntries = [];
+  try {
+    await core.executeAsModal(async () => {
+      textEntries = await fetchTextDescriptors(allLayers);
+    }, { commandName: "Scan Text Layers" });
+  } catch (e) {
+    showError("Text scan failed", e);
+    return;
+  }
+
+  const existing = document.getElementById("text-manager-modal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "text-manager-modal";
+  modal.className = "modal-overlay";
+  modal.style.display = "flex";
+  modal.style.alignItems = "center";
+  modal.style.justifyContent = "center";
+
+  const container = document.createElement("div");
+  container.style.cssText = "width:min(500px,calc(100vw - 40px));max-height:75vh;background:#3a4a67;border-radius:6px;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);";
+  
+  // Header
+  const header = document.createElement("div");
+  header.style.cssText = "padding:16px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;";
+  header.innerHTML = `<h3 style="margin:0;font-size:16px;color:#fff;font-weight:600;">Text Manager</h3>
+    <button id="close-text-manager-modal" style="background:none;border:none;color:#aaa;font-size:24px;cursor:pointer;padding:0;width:24px;height:24px;">&times;</button>`;
+  container.appendChild(header);
+
+  // Controls
+  const controls = document.createElement("div");
+  controls.style.cssText = "padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);";
+  controls.innerHTML = `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+    <input type="checkbox" id="text-manager-select-all" checked style="width:16px;height:16px;cursor:pointer;">
+    <span style="font-size:13px;color:#bbb;">Select All</span>
+  </label>`;
+  container.appendChild(controls);
+
+  // Scrollable list area
+  const scrollArea = document.createElement("div");
+  scrollArea.style.cssText = "flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px;";
+  scrollArea.id = "text-manager-list";
+  container.appendChild(scrollArea);
+
+  // Bottom buttons
+  const buttons = document.createElement("div");
+  buttons.style.cssText = "padding:12px 16px;border-top:1px solid rgba(255,255,255,0.1);display:flex;gap:10px;";
+  buttons.innerHTML = `<button id="text-manager-cancel" style="flex:1;padding:10px;background:rgba(100,100,120,0.4);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+    <button id="text-manager-apply" style="flex:1;padding:10px;background:rgba(91,155,240,0.6);border:1px solid rgba(91,155,240,0.8);border-radius:4px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Apply</button>`;
+  container.appendChild(buttons);
+
+  modal.appendChild(container);
+  document.body.appendChild(modal);
+
+  // Populate list
+  scrollArea.innerHTML = textEntries.map((entry) => {
+    const text = extractTextFromDescriptor(entry.descriptor) || "";
+    return `
+      <div class="text-manager-row" data-layer-id="${entry.id}" style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <input type="checkbox" class="text-manager-checkbox" checked style="width:16px;height:16px;cursor:pointer;flex-shrink:0;">
+          <span style="font-size:12px;color:#fff;font-weight:500;">${escapeHtml(entry.name)}</span>
+        </div>
+        <textarea class="text-manager-input" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid rgba(91,155,240,0.5);border-radius:3px;background:rgba(12,18,28,0.8);color:#fff;font-size:12px;line-height:1.5;resize:vertical;font-family:inherit;min-height:44px;">${text}</textarea>
+      </div>
+    `;
+  }).join("");
+
+  // Select All logic
+  const selectAllEl = container.querySelector('#text-manager-select-all');
+  selectAllEl.addEventListener('change', () => {
+    scrollArea.querySelectorAll('.text-manager-checkbox').forEach(cb => {
+      cb.checked = selectAllEl.checked;
+    });
+  });
+
+  // Auto-resize textareas
+  const autosize = (ta) => {
+    try {
+      ta.style.height = 'auto';
+      const newHeight = Math.max(44, Math.min(200, ta.scrollHeight));
+      ta.style.height = newHeight + 'px';
+    } catch (_) {}
+  };
+
+  scrollArea.querySelectorAll('.text-manager-input').forEach((ta) => {
+    autosize(ta);
+    ta.addEventListener('input', () => autosize(ta));
+  });
+
+  // Close handlers
+  const close = () => modal.remove();
+  header.querySelector('#close-text-manager-modal').addEventListener('click', close);
+  buttons.querySelector('#text-manager-cancel').addEventListener('click', close);
+
+  // Apply handler
+  buttons.querySelector('#text-manager-apply').addEventListener('click', async () => {
+    const rows = Array.from(scrollArea.querySelectorAll('.text-manager-row')).filter(row => row.querySelector('.text-manager-checkbox')?.checked);
+    const updates = rows.map((row) => ({
+      id: Number(row.dataset.layerId),
+      text: String(row.querySelector('.text-manager-input').value || '')
+    }));
+
+    if (!updates.length) {
+      setStatus("Select at least one item to apply", "error");
+      return;
+    }
+
+    try {
+      await core.executeAsModal(async () => {
+        const cmds = updates.map((u) => ({
+          _obj: "set",
+          _target: [{ _ref: "textLayer", _id: u.id }],
+          to: { _obj: "textLayer", textKey: u.text },
+        }));
+        const chunkSize = 30;
+        for (let i = 0; i < cmds.length; i += chunkSize) {
+          const chunk = cmds.slice(i, i + chunkSize);
+          await action.batchPlay(chunk, { synchronousExecution: true, continueOnError: true });
+        }
+      }, { commandName: "Apply Text Changes" });
+      setStatus(`Applied text to ${updates.length} layer(s).`, "success");
+      if (typeof refreshLayerList === "function") refreshLayerList();
+    } catch (e) {
+      showError("Apply text failed", e);
+    }
+  });
+
+  setTimeout(() => {
+    const first = scrollArea.querySelector('.text-manager-input');
+    if (first) first.focus();
+  }, 40);
 }
 
 async function pasteStyledTextLines(lines, styles) {
