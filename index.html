@@ -296,7 +296,7 @@
             <div class="field-grid">
               <div class="field-row">
                 <span class="field-label">Number of Slides</span>
-                <sp-textfield id="slide-count" value="6" type="number" size="s"></sp-textfield>
+                <sp-textfield id="slide-count" value="6" type="text" inputmode="numeric" pattern="[0-9]*" size="s"></sp-textfield>
               </div>
               <div class="field-row">
                 <span class="field-label">Filename Prefix</span>
@@ -312,7 +312,8 @@
             <p class="hint-text">
               Resizes the current document canvas to the Slide Setup width and
               height, fits the active image to the slide height, and can
-              optionally create a sharper 2x layout.
+              optionally create a sharper 2x layout. Use Scale for Export to
+              upscale the full document to 3x, 4x, or 5x before exporting.
             </p>
 
             <!-- NEW OPTIMIZATION BUTTONS -->
