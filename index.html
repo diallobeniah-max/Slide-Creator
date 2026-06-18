@@ -207,7 +207,7 @@
             <div class="field-grid">
               <div class="field-row">
                 <span class="field-label">Number of Artboards</span>
-                <sp-textfield id="artboard-count" value="1" type="number" size="s"></sp-textfield>
+                <sp-textfield id="artboard-count" value="1" type="text" inputmode="numeric" pattern="[0-9]*" size="s"></sp-textfield>
               </div>
               <div class="field-row">
                 <span class="field-label">Artboard Name</span>
@@ -242,6 +242,18 @@
               <p class="hint-text">
                 Uses the current document canvas size and places the new artboard
                 beside your existing layout.
+              </p>
+
+              <div class="row-2 artboard-delete-row">
+                <sp-button id="btn-delete-artboard-with-layers" variant="secondary" size="s">
+                  Delete Artboard + Layers
+                </sp-button>
+                <sp-button id="btn-delete-artboard-keep-layers" variant="secondary" size="s">
+                  Delete Artboard Only
+                </sp-button>
+              </div>
+              <p class="hint-text">
+                Select an artboard or a layer inside it. Delete Artboard Only keeps the layers in place on the canvas.
               </p>
             </div>
           </section>
@@ -308,7 +320,12 @@
               <sp-checkbox id="slide-highres">Automatic Sharp Output (2x)</sp-checkbox>
             </div>
 
-            <sp-button id="btn-create-slide" variant="cta" size="m" class="full-width">Create Slides</sp-button>
+            <sp-button id="btn-create-slide" variant="cta" size="m" class="full-width slide-create-primary">
+              Create Slides
+            </sp-button>
+            <sp-button id="btn-prompt-select-slides" variant="secondary" size="m" class="full-width slide-prompt-selector-button">
+              Prompt Selector Slides
+            </sp-button>
             <p class="hint-text">
               Resizes the current document canvas to the Slide Setup width and
               height, fits the active image to the slide height, and can
@@ -369,7 +386,10 @@
                   Split the current layout into separate slide documents.
                 </div>
               </div>
-              <sp-button id="btn-crop-slides" variant="secondary" size="m" class="full-width">Crop Slides</sp-button>
+              <div class="row-2 crop-slides-row-visible">
+                <sp-button id="btn-crop-slides" variant="secondary" size="s">Crop Slides</sp-button>
+                <sp-button id="btn-prompt-crop-slides" variant="secondary" size="s">Prompt Selector Slides</sp-button>
+              </div>
             </div>
 
             <div class="action-group">

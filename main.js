@@ -97,6 +97,8 @@ let statusHideTimer = null;
 let customPresets = {};
 let presetManagerContext = "artboard";
 let presetManagerEditingId = null;
+let activePictureDimensionPromise = null;
+let activePictureDimensionCache = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1605,6 +1607,13 @@ function getVal(id) {
   return el ? el.value || "" : "";
 }
 
+function setFieldValue(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = String(val);
+  el.setAttribute("value", String(val));
+}
+
 function isChecked(id) {
   const el = document.getElementById(id);
   return !!(el && el.checked);
@@ -1692,9 +1701,11 @@ function initWholeNumberStepper(id, fallback = 1) {
   const el = document.getElementById(id);
   if (!el || el.dataset.wholeNumberStepperBound === "true") return;
   el.dataset.wholeNumberStepperBound = "true";
+  el.type = "text";
   el.setAttribute("type", "text");
   el.setAttribute("inputmode", "numeric");
   el.setAttribute("pattern", "[0-9]*");
+  el.setAttribute("step", "1");
   normalizeWholeNumberField(el, fallback);
 
   const handleWheel = (event) => {
@@ -1709,21 +1720,30 @@ function initWholeNumberStepper(id, fallback = 1) {
   };
 
   el.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+  el.addEventListener("mousewheel", handleWheel, { passive: false, capture: true });
   ["input", "value-change", "change", "blur"].forEach((eventName) => {
     el.addEventListener(eventName, () => normalizeWholeNumberField(el, fallback));
   });
 
-  setTimeout(() => {
+  const bindInnerInput = () => {
     const innerInput = el.shadowRoot?.querySelector("input");
-    if (!innerInput || innerInput.dataset.wholeNumberStepperBound === "true") return;
+    if (!innerInput || innerInput.dataset.wholeNumberStepperBound === "true") return false;
     innerInput.dataset.wholeNumberStepperBound = "true";
+    innerInput.type = "text";
     innerInput.setAttribute("type", "text");
     innerInput.setAttribute("inputmode", "numeric");
+    innerInput.setAttribute("step", "1");
     innerInput.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    innerInput.addEventListener("mousewheel", handleWheel, { passive: false, capture: true });
     ["input", "change", "blur"].forEach((eventName) => {
       innerInput.addEventListener(eventName, () => normalizeWholeNumberField(el, fallback));
     });
-  }, 0);
+    return true;
+  };
+
+  [0, 60, 250, 700].forEach((delay) => window.setTimeout(bindInnerInput, delay));
+  el.addEventListener("focus", bindInnerInput);
+  el.addEventListener("click", bindInnerInput);
 }
 
 function updateArtboardHint() {
@@ -1890,6 +1910,28 @@ function buildArtboardRects(anchorBounds, artW, artH, position, count, gap) {
   return rects;
 }
 
+function getVisibleDesignBounds(doc) {
+  const rects = [];
+  for (const layer of getTopLevelLayers(doc)) {
+    if (!layer || layer.locked || layer.isBackgroundLayer || !layer.visible) continue;
+    if (isGroupLikeLayer(layer) && (!layer.layers || layer.layers.length === 0)) continue;
+    const rect = getLayerBoundsRect(layer) || getArtboardLikeBounds(layer);
+    if (rect && !isEmptyBounds(rect)) rects.push(rect);
+  }
+
+  if (!rects.length) {
+    const docW = Math.max(1, Math.round(Number(doc && doc.width) || 1));
+    const docH = Math.max(1, Math.round(Number(doc && doc.height) || 1));
+    return { left: 0, top: 0, right: docW, bottom: docH, width: docW, height: docH };
+  }
+
+  const left = Math.min(...rects.map((rect) => Number(rect.left)));
+  const top = Math.min(...rects.map((rect) => Number(rect.top)));
+  const right = Math.max(...rects.map((rect) => Number(rect.right)));
+  const bottom = Math.max(...rects.map((rect) => Number(rect.bottom)));
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
 function buildDuplicateLayoutRects(sourceBounds, artW, artH, position, count, gap) {
   const rects = [];
 
@@ -1975,17 +2017,21 @@ async function resizeActiveDocumentCanvas(newW, newH, shiftX, shiftY) {
   }], {});
 }
 
-async function createArtboardsInActiveDocument({ artW, artH, position, count, name }) {
+async function createArtboardsInActiveDocument({ artW, artH, position, count, name, expandCanvas = true, anchorBounds = null }) {
   const doc = app.activeDocument;
   if (!doc) throw new Error("No active document open.");
 
   const docW = Math.round(Number(doc.width));
   const docH = Math.round(Number(doc.height));
-  const occupiedBounds = await getOccupiedBounds(doc);
+  const occupiedBounds = anchorBounds || await getOccupiedBounds(doc);
   const rects = buildArtboardRects(occupiedBounds, artW, artH, position, count, ARTBOARD_GAP);
-  const expansion = getCanvasExpansion(docW, docH, rects);
+  const expansion = expandCanvas
+    ? getCanvasExpansion(docW, docH, rects)
+    : { newW: docW, newH: docH, shiftX: 0, shiftY: 0 };
 
-  await resizeActiveDocumentCanvas(expansion.newW, expansion.newH, expansion.shiftX, expansion.shiftY);
+  if (expandCanvas) {
+    await resizeActiveDocumentCanvas(expansion.newW, expansion.newH, expansion.shiftX, expansion.shiftY);
+  }
 
   for (let i = 0; i < rects.length; i++) {
     const rect = rects[i];
@@ -2002,6 +2048,7 @@ async function createArtboardsInActiveDocument({ artW, artH, position, count, na
       name: count > 1 ? `${name} ${i + 1}` : name,
       _options: { dialogOptions: "dontDisplay" },
     }], {});
+    await setSelectedArtboardBackgroundTransparent();
   }
 }
 
@@ -2053,6 +2100,23 @@ async function selectLayerById(layerId) {
     makeVisible: false,
     _options: { dialogOptions: "dontDisplay" },
   }], {});
+}
+
+async function setSelectedArtboardBackgroundTransparent() {
+  try {
+    await action.batchPlay([{
+      _obj: "editArtboardEvent",
+      _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }],
+      artboard: {
+        _obj: "artboard",
+        artboardBackgroundType: 3,
+      },
+      changeBackground: 1,
+      _options: { dialogOptions: "dontDisplay" },
+    }], {});
+  } catch (e) {
+    console.log("Could not set artboard background transparent:", e);
+  }
 }
 
 function flattenLayers(layers, flattened = []) {
@@ -2112,6 +2176,61 @@ async function getArtboardInfoFromLayerId(layerId) {
   }
 
   return null;
+}
+
+async function getRealArtboardInfos(doc) {
+  const artboards = [];
+  const seen = new Set();
+
+  for (const layer of flattenLayers((doc && doc.layers) || [])) {
+    const artboard = await getArtboardInfoFromLayerId(layer.id);
+    if (artboard && artboard.id !== null && !seen.has(artboard.id)) {
+      seen.add(artboard.id);
+      artboards.push(artboard);
+    }
+  }
+
+  return artboards;
+}
+
+async function getSelectedOrFirstRealArtboardInfo(doc) {
+  const activeLayers = Array.from((doc && doc.activeLayers) || []);
+
+  for (const layer of activeLayers) {
+    const artboard = await getArtboardInfoFromLayerId(layer.id);
+    if (artboard) {
+      artboard.layer = getLayerById(doc, artboard.id);
+      return artboard;
+    }
+  }
+
+  const artboards = await getRealArtboardInfos(doc);
+  if (!artboards.length) return null;
+  artboards[0].layer = getLayerById(doc, artboards[0].id);
+  return artboards[0];
+}
+
+function getSelectedLikelyArtboardInfoNoBatch(doc) {
+  const activeLayers = Array.from((doc && doc.activeLayers) || []);
+
+  for (const layer of activeLayers) {
+    const topLayer = getTopLevelArtboardLayer(layer, doc);
+    if (topLayer && isGroupLikeLayer(topLayer)) {
+      return {
+        id: toNumberId(topLayer.id),
+        bounds: getArtboardLikeBounds(topLayer),
+        layer: topLayer,
+      };
+    }
+  }
+
+  const firstGroup = getTopLevelLayers(doc).find((layer) => layer && isGroupLikeLayer(layer));
+  if (!firstGroup) return null;
+  return {
+    id: toNumberId(firstGroup.id),
+    bounds: getArtboardLikeBounds(firstGroup),
+    layer: firstGroup,
+  };
 }
 
 async function getAllArtboardInfos(doc) {
@@ -2192,26 +2311,25 @@ async function duplicateArtboardWithDesign() {
   }
 
   setStatus("Duplicating artboard with designâ€¦", "working");
+  let preselectedArtboard = null;
+  try {
+    preselectedArtboard = getSelectedLikelyArtboardInfoNoBatch(doc);
+  } catch (_) {
+    preselectedArtboard = null;
+  }
+
   try {
     await core.executeAsModal(async () => {
-      const activeTopLayer = Array.from(doc.activeLayers || [])
-        .map((layer) => getTopLevelArtboardLayer(layer, doc))
-        .find(Boolean);
-      let sourceLayer = activeTopLayer || getPrimaryTopLevelLayer(doc);
-      let sourceArtboard = null;
-
-      if (sourceLayer && isGroupLikeLayer(sourceLayer)) {
-        sourceArtboard = {
-          id: toNumberId(sourceLayer.id),
-          bounds: getArtboardLikeBounds(sourceLayer),
-          layer: sourceLayer,
-        };
-      }
+      let sourceArtboard = preselectedArtboard;
+      let sourceLayer = sourceArtboard ? getLayerById(doc, sourceArtboard.id) : null;
 
       if (!sourceArtboard || !sourceLayer) {
         sourceArtboard = await createSourceArtboardFromDocument(doc, `${name} 1`);
         sourceLayer = sourceArtboard.layer;
       }
+      if (!sourceLayer) throw new Error("Could not find the source artboard layer.");
+      await selectLayerById(sourceLayer.id);
+      await setSelectedArtboardBackgroundTransparent();
 
       const docBounds = {
         left: 0,
@@ -2233,13 +2351,7 @@ async function duplicateArtboardWithDesign() {
           : docBounds;
       const layoutRects = buildDuplicateLayoutRects(normalizedBounds, artW, artH, position, count, ARTBOARD_GAP);
 
-      const expansion = getCanvasExpansion(
-        Math.round(Number(doc.width)),
-        Math.round(Number(doc.height)),
-        layoutRects
-      );
-
-      await resizeActiveDocumentCanvas(expansion.newW, expansion.newH, expansion.shiftX, expansion.shiftY);
+      const expansion = { shiftX: 0, shiftY: 0 };
       const shiftedSourceBounds = {
         left: normalizedBounds.left + expansion.shiftX,
         top: normalizedBounds.top + expansion.shiftY,
@@ -2262,6 +2374,8 @@ async function duplicateArtboardWithDesign() {
         const offsetX = targetLeft - shiftedSourceBounds.left;
         const offsetY = targetTop - shiftedSourceBounds.top;
         await duplicateLayer.translate(offsetX, offsetY);
+        await selectLayerById(duplicateLayer.id);
+        await setSelectedArtboardBackgroundTransparent();
         placedBoards.push({
           layer: duplicateLayer,
           left: targetLeft,
@@ -2309,12 +2423,21 @@ async function artboardFromLayerSize() {
   setStatus("Reading current canvas sizeâ€¦", "working");
   try {
     await core.executeAsModal(async () => {
-      const artW = Math.max(1, Math.round(Number(doc.width)));
-      const artH = Math.max(1, Math.round(Number(doc.height)));
+      const designBounds = getVisibleDesignBounds(doc);
+      const artW = Math.max(1, Math.round(Number(designBounds.width || (designBounds.right - designBounds.left)) || 1));
+      const artH = Math.max(1, Math.round(Number(designBounds.height || (designBounds.bottom - designBounds.top)) || 1));
 
       if (artW < 1 || artH < 1) throw new Error(`Invalid canvas size: ${artW}Ã—${artH}`);
 
-      await createArtboardsInActiveDocument({ artW, artH, position, count, name });
+      await createArtboardsInActiveDocument({
+        artW,
+        artH,
+        position,
+        count,
+        name,
+        expandCanvas: false,
+        anchorBounds: designBounds,
+      });
 
     }, { commandName: "Artboard from Canvas Size" });
 
@@ -2330,6 +2453,56 @@ async function artboardFromLayerSize() {
 }
 
 
+
+async function deleteSelectedArtboardWithLayers() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    showError("Delete Artboard failed", new Error("No document open."));
+    return;
+  }
+
+  try {
+    await core.executeAsModal(async () => {
+      const artboard = await getSelectedOrFirstRealArtboardInfo(doc);
+      if (!artboard) throw new Error("Select an artboard or a layer inside an artboard first.");
+      await selectLayerById(artboard.id);
+      await action.batchPlay([{
+        _obj: "delete",
+        _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }],
+        _options: { dialogOptions: "dontDisplay" },
+      }], {});
+    }, { commandName: "Delete Artboard and Layers" });
+
+    setStatus("Deleted artboard and its layers", "success");
+  } catch (e) {
+    showError("Delete Artboard failed", e);
+  }
+}
+
+async function deleteSelectedArtboardKeepLayers() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    showError("Delete Artboard Only failed", new Error("No document open."));
+    return;
+  }
+
+  try {
+    await core.executeAsModal(async () => {
+      const artboard = await getSelectedOrFirstRealArtboardInfo(doc);
+      if (!artboard) throw new Error("Select an artboard or a layer inside an artboard first.");
+      await selectLayerById(artboard.id);
+      await action.batchPlay([{
+        _obj: "ungroupLayersEvent",
+        _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }],
+        _options: { dialogOptions: "dontDisplay" },
+      }], {});
+    }, { commandName: "Delete Artboard Only" });
+
+    setStatus("Removed artboard and kept layers in place", "success");
+  } catch (e) {
+    showError("Delete Artboard Only failed", e);
+  }
+}
 
 async function addGuides() {
   const { slideCount } = getSlideInputs();
@@ -2379,8 +2552,14 @@ async function clearGuides() {
 // â”€â”€â”€ 4. Crop Slides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Reads ONLY from Slide Setup fields (slide-size-preset, slide-count, etc.)
 
-async function cropSlides() {
+async function cropSlides(selectedSlideNumbers = null) {
   const { slideW, slideH, slideCount, exportPrefix } = getSlideInputs();
+  const selectedSet = Array.isArray(selectedSlideNumbers) && selectedSlideNumbers.length
+    ? new Set(selectedSlideNumbers.map((value) => Math.max(1, Math.min(slideCount, Math.round(Number(value) || 1)))))
+    : null;
+  const slideNumbersToCrop = selectedSet
+    ? Array.from(selectedSet).sort((a, b) => a - b)
+    : Array.from({ length: slideCount }, (_, index) => index + 1);
 
   if (!app.activeDocument) {
     showError("Crop failed", new Error("No active document."));
@@ -2406,14 +2585,15 @@ async function cropSlides() {
   }
 
   slides = [];
-  setStatus("Cropping slidesâ€¦", "working");
+  setStatus("Cropping slides...", "working");
 
   try {
-    for (let i = 0; i < slideCount; i++) {
-      const num = i + 1;
+    for (let i = 0; i < slideNumbersToCrop.length; i++) {
+      const num = slideNumbersToCrop[i];
       const name = `${exportPrefix} Slide ${num}`;
-      const x = i * sliceW;
-      const right = i === slideCount - 1 ? docW : Math.min(docW, x + sliceW);
+      const slideIndex = num - 1;
+      const x = slideIndex * sliceW;
+      const right = slideIndex === slideCount - 1 ? docW : Math.min(docW, x + sliceW);
       const partW = Math.max(1, right - x);
 
       await core.executeAsModal(async () => {
@@ -2442,7 +2622,7 @@ async function cropSlides() {
         });
       }, { commandName: `Crop Slide ${num}` });
 
-      setStatus(`Cropped ${i + 1} / ${slideCount}â€¦`, "working");
+      setStatus(`Cropped ${i + 1} / ${slideNumbersToCrop.length}...`, "working");
     }
 
     renderThumbnails();
@@ -2450,13 +2630,94 @@ async function cropSlides() {
     // Show the Export All Slides button after cropping
     const exportButton = document.getElementById("btn-export-slides");
     if (exportButton) exportButton.classList.remove("hidden");
-    setStatus(`âœ“ ${slideCount} slides cropped â€” ready to export`, "success");
+    setStatus(`${slideNumbersToCrop.length} slide${slideNumbersToCrop.length === 1 ? "" : "s"} cropped - ready to export`, "success");
   } catch (e) {
     showError("Crop Slides failed", e);
   }
 }
 
 // â”€â”€â”€ 5. Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function closePromptSlideSelectorModal() {
+  const existing = document.getElementById("prompt-slide-selector-modal");
+  if (existing) existing.remove();
+  document.body.classList.remove("prompt-selector-modal-open");
+}
+
+function showPromptSlideSelectorModal() {
+  const { slideCount } = getSlideInputs();
+  const count = Math.max(1, Math.round(Number(slideCount) || 1));
+  closePromptSlideSelectorModal();
+  document.body.classList.add("prompt-selector-modal-open");
+
+  const modal = document.createElement("div");
+  modal.id = "prompt-slide-selector-modal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = `
+    <div class="modal-content layer-export-modal-content prompt-slide-selector-content">
+      <div class="modal-header">
+        <h3>Prompt Selector Slides</h3>
+        <button class="modal-close" id="close-prompt-slide-selector">&times;</button>
+      </div>
+      <div class="prompt-slide-selector-body">
+        <p class="prompt-slide-selector-hint">${count} slide${count === 1 ? "" : "s"} found. Choose one or more slides to crop.</p>
+        <div class="prompt-slide-selector-grid">
+          ${Array.from({ length: count }, (_, index) => {
+            const num = index + 1;
+            return `
+              <div class="prompt-slide-option${num === 1 ? " selected" : ""}" role="button" tabindex="0" data-slide-number="${num}">${num}</div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+      <div class="prompt-slide-selector-actions">
+        <div class="btn-cancel prompt-slide-action" id="cancel-prompt-slide-selector" role="button" tabindex="0">Cancel</div>
+        <div class="btn-confirm prompt-slide-action" id="run-prompt-slide-selector" role="button" tabindex="0">Prompt Slides</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const selectedSlideNumbers = new Set([1]);
+  const close = closePromptSlideSelectorModal;
+  modal.addEventListener("wheel", (event) => {
+    event.stopPropagation();
+    if (!event.target.closest(".prompt-slide-selector-grid")) {
+      event.preventDefault();
+    }
+  }, { passive: false });
+
+  modal.querySelector("#close-prompt-slide-selector").addEventListener("click", close);
+  modal.querySelector("#cancel-prompt-slide-selector").addEventListener("click", close);
+  modal.querySelectorAll(".prompt-slide-option").forEach((button) => {
+    button.addEventListener("click", () => {
+      const slideNumber = Number(button.dataset.slideNumber) || 1;
+      if (selectedSlideNumbers.has(slideNumber)) {
+        selectedSlideNumbers.delete(slideNumber);
+      } else {
+        selectedSlideNumbers.add(slideNumber);
+      }
+      modal.querySelectorAll(".prompt-slide-option").forEach((item) => {
+        item.classList.toggle("selected", selectedSlideNumbers.has(Number(item.dataset.slideNumber) || 0));
+      });
+    });
+    button.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        button.click();
+      }
+    });
+  });
+  modal.querySelector("#run-prompt-slide-selector").addEventListener("click", async () => {
+    const selected = Array.from(selectedSlideNumbers).sort((a, b) => a - b);
+    if (!selected.length) {
+      setStatus("Select at least one slide", "error");
+      return;
+    }
+    close();
+    await cropSlides(selected);
+  });
+}
 
 async function closeAllSlideDocs() {
   if (slides.length === 0) return;
@@ -3117,8 +3378,9 @@ function initTabs() {
 // â”€â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function initUI() {
-  // Safety reset: ensure the preset modal lock state never leaks across panel reloads.
+  // Safety reset: ensure modal lock states never leak across panel reloads.
   document.body.classList.remove("preset-modal-open");
+  closePromptSlideSelectorModal();
   const presetModal = document.getElementById("preset-manager-modal");
   if (presetModal) {
     presetModal.classList.add("hidden");
@@ -3134,6 +3396,7 @@ function initUI() {
   });
   initializeMacroManager();
   initializePresetManager();
+  initWholeNumberStepper("artboard-count", 1);
   initWholeNumberStepper("slide-count", 6);
   document.getElementById("btn-copy-status")?.addEventListener("click", () => {
     copyStatusMessage();
@@ -3146,6 +3409,7 @@ function initUI() {
   // Artboard Setup dropdowns
   bindDropdownPreview("artboard-preset", "artboard-preset-inline", (value) => {
     if (artCustomFields) artCustomFields.classList.toggle("hidden", value !== CUSTOM_PRESET_SENTINEL);
+    if (value === CUSTOM_PRESET_SENTINEL) autoFillCustomPresetDimensions("artboard");
     updateArtboardHint();
   });
   bindDropdownPreview("artboard-position", "artboard-position-inline", () => updateArtboardHint());
@@ -3153,6 +3417,7 @@ function initUI() {
   // Slide Setup dropdown
   bindDropdownPreview("slide-size-preset", "slide-size-preset-inline", (value) => {
     if (slideCustomFields) slideCustomFields.classList.toggle("hidden", value !== CUSTOM_PRESET_SENTINEL);
+    if (value === CUSTOM_PRESET_SENTINEL) autoFillCustomPresetDimensions("slide");
   });
 
   // Export format dropdown
@@ -3188,7 +3453,7 @@ function flashActionButton(button) {
 }
 
 function handleButtonClick(event) {
-  const button = event.target.closest("sp-button, [data-action-button]");
+  const button = event.target.closest("sp-button, [data-action-button], .slide-crop-action-btn");
   if (!button) return;
   flashActionButton(button);
   switch (button.id) {
@@ -3198,6 +3463,8 @@ function handleButtonClick(event) {
     case "btn-create-canvas": createCanvas(); break;
     case "btn-duplicate-artboard": duplicateArtboardWithDesign(); break;
     case "btn-artboard-from-layer": artboardFromLayerSize(); break;
+    case "btn-delete-artboard-with-layers": deleteSelectedArtboardWithLayers(); break;
+    case "btn-delete-artboard-keep-layers": deleteSelectedArtboardKeepLayers(); break;
     case "btn-auto-aspect-create": autoCalculateAndCreateSlide(); break;
     case "btn-create-slide": createSlideLayoutDocument(); break;
 
@@ -3208,6 +3475,8 @@ function handleButtonClick(event) {
     case "btn-add-guides": addGuides(); break;
     case "btn-clear-guides": clearGuides(); break;
     case "btn-crop-slides": cropSlides(); break;
+    case "btn-prompt-select-slides": showPromptSlideSelectorModal(); break;
+    case "btn-prompt-crop-slides": showPromptSlideSelectorModal(); break;
     case "btn-export-slides": showExportOptionsModal(); break;
 
     case "btn-rasterize": rasterizeSelectedLayers(); break;
@@ -3482,8 +3751,7 @@ function isGroupLikeLayer(layer) {
 }
 
 async function createSourceArtboardFromDocument(doc, baseName) {
-  const docW = Math.round(Number(doc.width));
-  const docH = Math.round(Number(doc.height));
+  const designBounds = getVisibleDesignBounds(doc);
   const beforeIds = new Set(getTopLevelLayers(doc).map((layer) => toNumberId(layer.id)));
 
   await action.batchPlay([{
@@ -3491,10 +3759,10 @@ async function createSourceArtboardFromDocument(doc, baseName) {
     _target: [{ _ref: "artboardSection" }],
     artboardRect: {
       _obj: "classFloatRect",
-      top: { _unit: "pixelsUnit", _value: 0 },
-      left: { _unit: "pixelsUnit", _value: 0 },
-      bottom: { _unit: "pixelsUnit", _value: docH },
-      right: { _unit: "pixelsUnit", _value: docW },
+      top: { _unit: "pixelsUnit", _value: Math.round(designBounds.top) },
+      left: { _unit: "pixelsUnit", _value: Math.round(designBounds.left) },
+      bottom: { _unit: "pixelsUnit", _value: Math.round(designBounds.bottom) },
+      right: { _unit: "pixelsUnit", _value: Math.round(designBounds.right) },
     },
     name: baseName,
     _options: { dialogOptions: "dontDisplay" },
@@ -3509,6 +3777,8 @@ async function createSourceArtboardFromDocument(doc, baseName) {
   }
 
   const sourceId = toNumberId(sourceLayer.id);
+  await selectLayerById(sourceId);
+  await setSelectedArtboardBackgroundTransparent();
   const layersToMove = getTopLevelLayers(doc)
     .filter((layer) => toNumberId(layer.id) !== sourceId);
 
@@ -3518,7 +3788,12 @@ async function createSourceArtboardFromDocument(doc, baseName) {
 
   return {
     id: sourceId,
-    bounds: { left: 0, top: 0, right: docW, bottom: docH },
+    bounds: {
+      left: Math.round(designBounds.left),
+      top: Math.round(designBounds.top),
+      right: Math.round(designBounds.right),
+      bottom: Math.round(designBounds.bottom),
+    },
     layer: sourceLayer,
   };
 }
@@ -4005,21 +4280,15 @@ async function scaleForExport(multiplier = 3) {
   }
 }
 
-async function autoCalculateAndCreateSlide() {
+async function readActivePictureDimensions() {
   const doc = app.activeDocument;
-  if (!doc) {
-    showError("Auto Calculate failed", new Error("No active document open."));
-    return;
-  }
+  if (!doc) return null;
 
-  const { slideCount, exportPrefix } = getSlideInputs();
   let picW = 0;
   let picH = 0;
 
-  // Read actual layer/document dimensions inside a modal context
   try {
     await core.executeAsModal(async () => {
-      // Try batchPlay to get exact bounds from Photoshop's transform
       try {
         const result = await action.batchPlay([{
           _obj: "get",
@@ -4043,7 +4312,6 @@ async function autoCalculateAndCreateSlide() {
         console.log("batchPlay bounds error:", e);
       }
 
-      // Fallback: active layer API bounds
       if (picW <= 0 || picH <= 0) {
         const activeLayer = (doc.activeLayers && doc.activeLayers[0]) || getPrimaryTopLevelLayer(doc);
         if (activeLayer) {
@@ -4053,18 +4321,66 @@ async function autoCalculateAndCreateSlide() {
         }
       }
 
-      // Final fallback: full canvas size
       if (picW <= 0 || picH <= 0 || isNaN(picW) || isNaN(picH)) {
         picW = Math.round(Number(doc.width));
         picH = Math.round(Number(doc.height));
       }
-
-    }, { commandName: "Read Layer Dimensions" });
+    }, { commandName: "Read Picture Dimensions" });
   } catch (e) {
     picW = Math.round(Number(doc.width));
     picH = Math.round(Number(doc.height));
-    console.log("Modal read error:", e);
+    console.log("Picture dimension read error:", e);
   }
+
+  return {
+    w: Math.max(1, Math.round(Number(picW) || 1)),
+    h: Math.max(1, Math.round(Number(picH) || 1)),
+    docId: doc.id,
+  };
+}
+
+async function getActivePictureDimensionsCached() {
+  const doc = app.activeDocument;
+  if (!doc) return null;
+  if (!activePictureDimensionPromise) {
+    activePictureDimensionPromise = readActivePictureDimensions()
+      .then((dims) => {
+        activePictureDimensionCache = dims;
+        return dims;
+      })
+      .finally(() => {
+        activePictureDimensionPromise = null;
+      });
+  }
+  return activePictureDimensionPromise;
+}
+
+async function autoFillCustomPresetDimensions(contextName) {
+  const config = SIZE_CONTEXTS[contextName];
+  if (!config || getVal(config.dropdownId) !== CUSTOM_PRESET_SENTINEL) return;
+  const dims = await getActivePictureDimensionsCached();
+  if (!dims || getVal(config.dropdownId) !== CUSTOM_PRESET_SENTINEL) return;
+  setFieldValue(config.widthId, String(dims.w));
+  setFieldValue(config.heightId, String(dims.h));
+  if (contextName === "artboard") updateArtboardHint();
+}
+
+async function autoCalculateAndCreateSlide() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    showError("Auto Calculate failed", new Error("No active document open."));
+    return;
+  }
+
+  const { slideCount, exportPrefix } = getSlideInputs();
+  const dims = await readActivePictureDimensions();
+  if (!dims) {
+    showError("Auto Calculate failed", new Error("Could not read the active picture size."));
+    return;
+  }
+  activePictureDimensionCache = dims;
+  const picW = dims.w;
+  const picH = dims.h;
 
   // The exact width & height of the picture becomes the width & height of ONE slide!
   const slideW = Math.max(1, picW);
@@ -4073,15 +4389,6 @@ async function autoCalculateAndCreateSlide() {
   // Ensure values are strings for UI attributes
   const wStr = String(slideW);
   const hStr = String(slideH);
-
-  // Set values onto the DOM elements
-  function setFieldValue(id, val) {
-    const el = document.getElementById(id);
-    if (el) {
-      el.value = val;
-      el.setAttribute("value", String(val));
-    }
-  }
 
   // Switch preset dropdown to Custom and show the W/H fields
   syncDropdownSelection("slide-size-preset", "slide-size-preset-inline", CUSTOM_PRESET_SENTINEL);
@@ -5406,23 +5713,62 @@ async function linkSelectedLayers() {
   const doc = app.activeDocument;
   if (!doc) return;
   const layers = Array.from(doc.activeLayers || []);
-  if (layers.length < 2) {
+  const alreadyLinked = await selectedLayersHaveLinkedLayer(layers);
+  if (!alreadyLinked && layers.length < 2) {
     showError("Link failed", new Error("Select at least 2 layers to link."));
     return;
   }
 
-  setStatus("Linking layers...", "working");
+  setStatus(alreadyLinked ? "Unlinking layers..." : "Linking layers...", "working");
   try {
     await core.executeAsModal(async () => {
       await action.batchPlay([{
-        _obj: "linkSelectedLayers",
+        _obj: alreadyLinked ? "unlinkSelectedLayers" : "linkSelectedLayers",
         _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }]
       }], {});
-    }, { commandName: "Link Layers" });
-    setStatus("Layers linked", "success");
+    }, { commandName: alreadyLinked ? "Unlink Layers" : "Link Layers" });
+    setStatus(alreadyLinked ? "Layers unlinked" : "Layers linked", "success");
   } catch (e) {
-    showError("Link failed", e);
+    showError(alreadyLinked ? "Unlink failed" : "Link failed", e);
   }
+}
+
+async function selectedLayersHaveLinkedLayer(layers) {
+  for (const layer of Array.from(layers || [])) {
+    const linkedIds = await getLinkedLayerIds(layer);
+    if (linkedIds.length > 0) return true;
+  }
+  return false;
+}
+
+async function getLinkedLayerIds(layer) {
+  if (!layer) return [];
+
+  try {
+    const linkedLayers = Array.from(layer.linkedLayers || []);
+    const ids = linkedLayers.map((item) => Number(item && item.id)).filter(Number.isFinite);
+    if (ids.length) return ids;
+  } catch (_) {}
+
+  try {
+    const [result] = await action.batchPlay([{
+      _obj: "get",
+      _target: [
+        { _property: "linkedLayerIDs" },
+        { _ref: "layer", _id: layer.id }
+      ],
+      _options: { dialogOptions: "dontDisplay" }
+    }], { synchronousExecution: true });
+    const raw = result && result.linkedLayerIDs;
+    if (Array.isArray(raw)) {
+      return raw.map((item) => Number(item && (item._value ?? item))).filter(Number.isFinite);
+    }
+    if (raw && Array.isArray(raw._value)) {
+      return raw._value.map((item) => Number(item && (item._value ?? item))).filter(Number.isFinite);
+    }
+  } catch (_) {}
+
+  return [];
 }
 
 async function toggleVisibility() {
@@ -6985,6 +7331,12 @@ async function showTextSlideAlignmentDialog() {
   const selectedLayerIds = new Set();
   let orderedTextLayerIds = [];
   let selectedMode = "h-center";
+  const layerTypeFilters = Array.from(
+    new Map(textLayers.map((item) => {
+      const type = item.type || getSlideAlignmentLayerType(item.layer);
+      return [type.key, type];
+    })).values()
+  );
   const pairingColors = [
     "rgba(255, 184, 108, 0.34)",
     "rgba(255, 160, 122, 0.34)",
@@ -7000,14 +7352,13 @@ async function showTextSlideAlignmentDialog() {
   modal.innerHTML = `
     <div class="modal-content layer-export-modal-content text-slide-align-modal-content">
       <div class="modal-header">
-        <h3>Align Layers to Slides</h3>
+        <div class="text-slide-align-title-row">
+          <h3>Align Layers to Slides</h3>
+          <span class="text-slide-align-board-count">${regions.length} board${regions.length === 1 ? "" : "s"}</span>
+        </div>
         <button class="modal-close" id="close-slide-align-modal">&times;</button>
       </div>
       <div class="tool-modal-body text-slide-align-body">
-        <div class="guide-layer-region-summary">
-          <strong>${regions.length} board${regions.length === 1 ? "" : "s"} found</strong>
-          <span>Select the boards and layers to include.</span>
-        </div>
         <section class="text-slide-align-section">
           <div class="text-slide-align-section-head">
             <span>Boards</span>
@@ -7031,6 +7382,13 @@ async function showTextSlideAlignmentDialog() {
           <div class="text-slide-align-section-head">
             <span>Layers</span>
             <div class="text-slide-align-mini-actions">
+              <span class="text-slide-layer-filter-list" aria-label="Layer type filters">
+                ${layerTypeFilters.map((type) => `
+                  <button type="button" class="text-slide-layer-filter layer-kind-${escapeHtml(type.key)}" data-layer-filter="${escapeHtml(type.key)}" title="Select ${escapeHtml(type.label)} layers" aria-label="Select ${escapeHtml(type.label)} layers">
+                    <span></span>
+                  </button>
+                `).join("")}
+              </span>
               <button type="button" data-text-action="all">All</button>
               <button type="button" data-text-action="none">None</button>
             </div>
@@ -7040,12 +7398,14 @@ async function showTextSlideAlignmentDialog() {
               const region = getTextLayerCurrentRegion(item.rect, regions);
               const type = item.type || getSlideAlignmentLayerType(item.layer);
               return `
-                <label class="text-slide-align-row text-row layer-kind-${escapeHtml(type.key)}" data-layer-id="${Number(item.layer.id)}">
+                <label class="text-slide-align-row text-row layer-kind-${escapeHtml(type.key)}" data-layer-id="${Number(item.layer.id)}" data-layer-type="${escapeHtml(type.key)}">
                   <input type="checkbox" class="text-slide-layer-check" value="${Number(item.layer.id)}">
                   <span class="text-slide-align-number">-</span>
                   <span class="text-slide-layer-kind">${escapeHtml(type.label)}</span>
-                  <span class="text-slide-align-main">${escapeHtml(item.layer.name || `Layer ${item.index + 1}`)}</span>
-                  <span class="text-slide-align-meta">${escapeHtml(region ? region.name : "Outside boards")}</span>
+                  <span class="text-slide-align-layer-copy">
+                    <span class="text-slide-align-main">${escapeHtml(item.layer.name || `Layer ${item.index + 1}`)}</span>
+                    <span class="text-slide-align-meta">${escapeHtml(region ? region.name : "Outside boards")}</span>
+                  </span>
                   <span class="text-slide-align-reorder">
                     <button type="button" class="text-slide-order-btn" data-order-action="up" title="Move up">Up</button>
                     <button type="button" class="text-slide-order-btn" data-order-action="down" title="Move down">Dn</button>
@@ -7067,6 +7427,7 @@ async function showTextSlideAlignmentDialog() {
             </button>
           `).join("")}
         </div>
+        <div class="text-slide-align-hint">Align selected layers to the chosen slide position.</div>
       </div>
       <div class="layer-export-actions text-slide-align-actions">
         <button id="slide-align-cancel" type="button">Cancel</button>
@@ -7209,6 +7570,28 @@ async function showTextSlideAlignmentDialog() {
   });
   modal.querySelectorAll("[data-text-action]").forEach((button) => {
     button.addEventListener("click", () => setChecks(".text-slide-layer-check", button.dataset.textAction === "all"));
+  });
+  modal.querySelectorAll("[data-layer-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const filterType = button.dataset.layerFilter || "";
+      selectedLayerIds.clear();
+      orderedTextLayerIds = [];
+      modal.querySelectorAll(".text-row").forEach((row) => {
+        const checkbox = row.querySelector(".text-slide-layer-check");
+        const layerId = Number(row.dataset.layerId);
+        const isMatch = row.dataset.layerType === filterType;
+        if (checkbox) checkbox.checked = isMatch;
+        if (isMatch && Number.isFinite(layerId)) {
+          selectedLayerIds.add(layerId);
+          orderedTextLayerIds.push(layerId);
+        }
+      });
+      modal.querySelectorAll("[data-layer-filter]").forEach((item) => {
+        item.classList.toggle("selected", item === button);
+      });
+      syncTextOrderRows();
+      refreshCheckedRows();
+    });
   });
   modal.querySelectorAll(".text-slide-align-mode").forEach((button) => {
     button.addEventListener("click", () => {
