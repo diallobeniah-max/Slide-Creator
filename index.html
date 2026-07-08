@@ -150,68 +150,90 @@
     <div class="panel-scroll-container">
       <div class="panel-scroll-area" id="main-scroll-area">
         <section class="tab-panel active" data-tab-panel="artboard">
-          <section class="card card-emphasis">
-            <div class="section-header">
-              <span class="section-kicker">Build</span>
-              <span class="section-title">Artboard Setup</span>
+          <section class="card card-emphasis artboard-setup-card">
+            <div class="artboard-setup-hero">
+              <div class="artboard-setup-copy">
+                <span class="section-kicker">Build</span>
+                <span class="section-title">Artboard Setup</span>
+                <span class="artboard-setup-subtitle">Size, place, duplicate, or remove artboards without disturbing the canvas layout.</span>
+              </div>
+              <div class="artboard-blueprint-mark" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
             </div>
 
-            <div class="field-row">
-              <span class="field-label">Preset Size</span>
-              <div class="preset-picker">
-                <div class="dropdown-wrap">
-                  <sp-dropdown id="artboard-preset" class="native-select" value="custom">
-                    <sp-menu slot="options"></sp-menu>
-                  </sp-dropdown>
-                  <span class="dropdown-inline-label" id="artboard-preset-inline">Custom...</span>
+            <div class="artboard-control-panel">
+              <div class="artboard-panel-heading">
+                <span class="artboard-panel-index">01</span>
+                <span class="artboard-panel-title">Size source</span>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Preset Size</span>
+                <div class="preset-picker artboard-preset-picker">
+                  <div class="dropdown-wrap">
+                    <sp-dropdown id="artboard-preset" class="native-select" value="custom">
+                      <sp-menu slot="options"></sp-menu>
+                    </sp-dropdown>
+                    <span class="dropdown-inline-label" id="artboard-preset-inline">Custom...</span>
+                  </div>
+                  <button id="btn-edit-artboard-presets" type="button" class="preset-editor-btn"
+                    title="Add or edit saved sizes" aria-label="Add or edit saved artboard sizes">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" fill="none"
+                      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M7 3h10a2 2 0 0 1 2 2v16l-7-4-7 4V5a2 2 0 0 1 2-2Z" />
+                      <path d="M12 8v6" />
+                      <path d="M9 11h6" />
+                    </svg>
+                    <span class="preset-editor-fallback" aria-hidden="true">+</span>
+                  </button>
                 </div>
-                <button id="btn-edit-artboard-presets" type="button" class="preset-editor-btn"
-                  title="Add or edit saved sizes" aria-label="Add or edit saved artboard sizes">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" fill="none"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M7 3h10a2 2 0 0 1 2 2v16l-7-4-7 4V5a2 2 0 0 1 2-2Z" />
-                    <path d="M12 8v6" />
-                    <path d="M9 11h6" />
-                  </svg>
-                  <span class="preset-editor-fallback" aria-hidden="true">+</span>
-                </button>
+              </div>
+
+              <div id="artboard-custom-fields" class="artboard-size-fields">
+                <div class="field-row">
+                  <span class="field-label">[W] Width (px)</span>
+                  <sp-textfield id="artboard-custom-w" value="1080" type="number" size="s"></sp-textfield>
+                </div>
+                <div class="field-row">
+                  <span class="field-label">[H] Height (px)</span>
+                  <sp-textfield id="artboard-custom-h" value="1080" type="number" size="s"></sp-textfield>
+                </div>
               </div>
             </div>
 
-            <div id="artboard-custom-fields">
-              <div class="field-row">
-                <span class="field-label">[W] Width (px)</span>
-                <sp-textfield id="artboard-custom-w" value="1080" type="number" size="s"></sp-textfield>
+            <div class="artboard-control-panel">
+              <div class="artboard-panel-heading">
+                <span class="artboard-panel-index">02</span>
+                <span class="artboard-panel-title">Placement</span>
               </div>
-              <div class="field-row">
-                <span class="field-label">[H] Height (px)</span>
-                <sp-textfield id="artboard-custom-h" value="1080" type="number" size="s"></sp-textfield>
-              </div>
-            </div>
 
-            <div class="field-row">
-              <span class="field-label">Artboard Position</span>
-              <div class="dropdown-wrap">
-                <sp-dropdown id="artboard-position" class="native-select" value="left">
-                  <sp-menu slot="options">
-                    <sp-menu-item value="left">Left</sp-menu-item>
-                    <sp-menu-item value="right">Right</sp-menu-item>
-                    <sp-menu-item value="up">Up</sp-menu-item>
-                    <sp-menu-item value="bottom">Bottom</sp-menu-item>
-                  </sp-menu>
-                </sp-dropdown>
-                <span class="dropdown-inline-label" id="artboard-position-inline">Left</span>
+              <div class="field-row">
+                <span class="field-label">Artboard Position</span>
+                <div class="dropdown-wrap artboard-position-wrap">
+                  <sp-dropdown id="artboard-position" class="native-select" value="left">
+                    <sp-menu slot="options">
+                      <sp-menu-item value="left">Left</sp-menu-item>
+                      <sp-menu-item value="right">Right</sp-menu-item>
+                      <sp-menu-item value="up">Up</sp-menu-item>
+                      <sp-menu-item value="bottom">Bottom</sp-menu-item>
+                    </sp-menu>
+                  </sp-dropdown>
+                  <span class="dropdown-inline-label" id="artboard-position-inline">Left</span>
+                </div>
               </div>
-            </div>
 
-            <div class="field-grid">
-              <div class="field-row">
-                <span class="field-label">Number of Artboards</span>
-                <sp-textfield id="artboard-count" value="1" type="text" inputmode="numeric" pattern="[0-9]*" size="s"></sp-textfield>
-              </div>
-              <div class="field-row">
-                <span class="field-label">Artboard Name</span>
-                <sp-textfield id="artboard-name" value="canvas" size="s"></sp-textfield>
+              <div class="field-grid artboard-meta-grid">
+                <div class="field-row">
+                  <span class="field-label">Number of Artboards</span>
+                  <sp-textfield id="artboard-count" value="1" type="text" inputmode="numeric" pattern="[0-9]*" size="s"></sp-textfield>
+                </div>
+                <div class="field-row">
+                  <span class="field-label">Artboard Name</span>
+                  <sp-textfield id="artboard-name" value="canvas" size="s"></sp-textfield>
+                </div>
               </div>
             </div>
 
@@ -219,192 +241,242 @@
               1 artboard(s) - 1080 x 1080 px
             </div>
 
-            <div class="action-stack">
-              <sp-button id="btn-create-canvas" variant="cta" size="m" class="full-width">Create Artboard</sp-button>
-              <p class="hint-text">
-                Adds artboards in the current Photoshop document and expands the
-                canvas only when needed.
-              </p>
-
-              <div class="section-divider">Quick actions</div>
-
-              <sp-button id="btn-duplicate-artboard" variant="secondary" size="m" class="full-width">
-                Duplicate Artboard with Design
-              </sp-button>
-              <p class="hint-text">
-                Duplicates the selected artboard when possible, or uses the first
-                artboard it finds in the active document.
-              </p>
-
-              <sp-button id="btn-artboard-from-layer" variant="secondary" size="m" class="full-width">
-                Artboard from Canvas Size
-              </sp-button>
-              <p class="hint-text">
-                Uses the current document canvas size and places the new artboard
-                beside your existing layout.
-              </p>
-
-              <div class="row-2 artboard-delete-row">
-                <sp-button id="btn-delete-artboard-with-layers" variant="secondary" size="s">
-                  Delete Artboard + Layers
-                </sp-button>
-                <sp-button id="btn-delete-artboard-keep-layers" variant="secondary" size="s">
-                  Delete Artboard Only
-                </sp-button>
+            <div class="action-stack artboard-action-stack">
+              <div class="artboard-primary-action">
+                <sp-button id="btn-create-canvas" variant="cta" size="m" class="full-width">Create Artboard</sp-button>
+                <p class="hint-text">
+                  Adds artboards in the current Photoshop document and expands the
+                  canvas only when needed.
+                </p>
               </div>
-              <p class="hint-text">
-                Select an artboard or a layer inside it. Delete Artboard Only keeps the layers in place on the canvas.
-              </p>
+
+              <div class="section-divider artboard-divider">Quick actions</div>
+
+              <div class="artboard-quick-grid">
+                <div class="artboard-action-tile">
+                  <sp-button id="btn-duplicate-artboard" variant="secondary" size="m" class="full-width">
+                    Duplicate Artboard with Design
+                  </sp-button>
+                  <p class="hint-text">
+                    Duplicates the selected artboard when possible, or uses the first
+                    artboard it finds in the active document.
+                  </p>
+                </div>
+
+                <div class="artboard-action-tile">
+                  <sp-button id="btn-artboard-from-layer" variant="secondary" size="m" class="full-width">
+                    Artboard from Canvas Size
+                  </sp-button>
+                  <p class="hint-text">
+                    Uses the current document canvas size and places the new artboard
+                    beside your existing layout.
+                  </p>
+                </div>
+              </div>
+
+              <div class="artboard-danger-zone">
+                <div class="row-2 artboard-delete-row">
+                  <sp-button id="btn-delete-artboard-with-layers" variant="secondary" size="s">
+                    Delete Artboard + Layers
+                  </sp-button>
+                  <sp-button id="btn-delete-artboard-keep-layers" variant="secondary" size="s">
+                    Delete Artboard Only
+                  </sp-button>
+                </div>
+                <p class="hint-text">
+                  Select an artboard or a layer inside it. Delete Artboard Only keeps the layers in place on the canvas.
+                </p>
+              </div>
             </div>
           </section>
         </section>
 
-        <section class="tab-panel" data-tab-panel="slide">
-          <section class="card">
-            <div class="section-header">
-              <span class="section-kicker">Prepare</span>
-              <span class="section-title">Slide Setup</span>
-            </div>
-
-            <div class="field-row">
-              <span class="field-label">Preset Size</span>
-              <div class="preset-picker">
-                <div class="dropdown-wrap">
-                  <sp-dropdown id="slide-size-preset" class="native-select" value="custom">
-                    <sp-menu slot="options"></sp-menu>
-                  </sp-dropdown>
-                  <span class="dropdown-inline-label" id="slide-size-preset-inline">Custom...</span>
-                </div>
-                <button id="btn-edit-slide-presets" type="button" class="preset-editor-btn"
-                  title="Add or edit saved sizes" aria-label="Add or edit saved slide sizes">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" fill="none"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M7 3h10a2 2 0 0 1 2 2v16l-7-4-7 4V5a2 2 0 0 1 2-2Z" />
-                    <path d="M12 8v6" />
-                    <path d="M9 11h6" />
-                  </svg>
-                  <span class="preset-editor-fallback" aria-hidden="true">+</span>
-                </button>
+        <section class="tab-panel slide-setup-panel" data-tab-panel="slide">
+          <section class="card slide-setup-card">
+            <div class="slide-setup-hero">
+              <div class="slide-setup-copy">
+                <span class="section-kicker">Prepare</span>
+                <span class="section-title">Slide Setup</span>
+                <span class="slide-setup-subtitle">Choose a ratio, build the strip, add guides, then crop and export the finished slides.</span>
+              </div>
+              <div class="slide-strip-mark" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
             </div>
 
-            <div class="field-row" style="margin-top: 4px;">
-              <sp-button id="btn-auto-aspect-create" variant="secondary" size="s">
-                Auto-Calculate
+            <div class="slide-control-panel">
+              <div class="slide-panel-heading">
+                <span class="slide-panel-index">01</span>
+                <span class="slide-panel-title">Ratio and size</span>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Preset Size</span>
+                <div class="preset-picker slide-preset-picker">
+                  <div class="dropdown-wrap">
+                    <sp-dropdown id="slide-size-preset" class="native-select" value="custom">
+                      <sp-menu slot="options"></sp-menu>
+                    </sp-dropdown>
+                    <span class="dropdown-inline-label" id="slide-size-preset-inline">Custom...</span>
+                  </div>
+                  <button id="btn-edit-slide-presets" type="button" class="preset-editor-btn"
+                    title="Add or edit saved sizes" aria-label="Add or edit saved slide sizes">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" fill="none"
+                      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M7 3h10a2 2 0 0 1 2 2v16l-7-4-7 4V5a2 2 0 0 1 2-2Z" />
+                      <path d="M12 8v6" />
+                      <path d="M9 11h6" />
+                    </svg>
+                    <span class="preset-editor-fallback" aria-hidden="true">+</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="slide-auto-row">
+                <sp-button id="btn-auto-aspect-create" variant="secondary" size="s">
+                  Auto-Calculate
+                </sp-button>
+                <span class="slide-auto-hint">Use the active picture size.</span>
+              </div>
+
+              <div id="slide-custom-fields" class="slide-size-fields">
+                <div class="field-row">
+                  <span class="field-label">[W] Width (px)</span>
+                  <sp-textfield id="slide-custom-w" value="1080" type="number" size="s"></sp-textfield>
+                </div>
+                <div class="field-row">
+                  <span class="field-label">[H] Height (px)</span>
+                  <sp-textfield id="slide-custom-h" value="1080" type="number" size="s"></sp-textfield>
+                </div>
+              </div>
+            </div>
+
+            <div class="slide-control-panel">
+              <div class="slide-panel-heading">
+                <span class="slide-panel-index">02</span>
+                <span class="slide-panel-title">Output strip</span>
+              </div>
+
+              <div class="field-grid slide-meta-grid">
+                <div class="field-row">
+                  <span class="field-label">Number of Slides</span>
+                  <sp-textfield id="slide-count" value="6" type="text" inputmode="numeric" pattern="[0-9]*" size="s"></sp-textfield>
+                </div>
+                <div class="field-row">
+                  <span class="field-label">Filename Prefix</span>
+                  <sp-textfield id="export-prefix" value="slide" size="s"></sp-textfield>
+                </div>
+              </div>
+
+              <div class="field-row toggle-row slide-sharp-row">
+                <sp-checkbox id="slide-highres">Automatic Sharp Output (2x)</sp-checkbox>
+              </div>
+            </div>
+
+            <div class="slide-create-block">
+              <sp-button id="btn-create-slide" variant="cta" size="m" class="full-width slide-create-primary">
+                Create Slides
               </sp-button>
-            </div>
+              <p class="hint-text">
+                Resizes the current document canvas to the Slide Setup width and
+                height, fits the visible layout to the selected ratio, and keeps
+                photo layers from stretching. Use Scale for Export to upscale
+                the full document to 3x, 4x, or 5x before exporting.
+              </p>
 
-            <div id="slide-custom-fields">
-              <div class="field-row">
-                <span class="field-label">[W] Width (px)</span>
-                <sp-textfield id="slide-custom-w" value="1080" type="number" size="s"></sp-textfield>
+              <div class="row-2 slide-optimization-row">
+                <sp-button id="btn-optimize-canvas" variant="secondary" size="s">Optimize Canvas</sp-button>
+                <sp-button id="btn-scale-for-export" variant="secondary" size="s">Scale for Export</sp-button>
               </div>
-              <div class="field-row">
-                <span class="field-label">[H] Height (px)</span>
-                <sp-textfield id="slide-custom-h" value="1080" type="number" size="s"></sp-textfield>
-              </div>
-            </div>
-
-            <div class="field-grid">
-              <div class="field-row">
-                <span class="field-label">Number of Slides</span>
-                <sp-textfield id="slide-count" value="6" type="text" inputmode="numeric" pattern="[0-9]*" size="s"></sp-textfield>
-              </div>
-              <div class="field-row">
-                <span class="field-label">Filename Prefix</span>
-                <sp-textfield id="export-prefix" value="slide" size="s"></sp-textfield>
-              </div>
-            </div>
-
-            <div class="field-row toggle-row">
-              <sp-checkbox id="slide-highres">Automatic Sharp Output (2x)</sp-checkbox>
-            </div>
-
-            <sp-button id="btn-create-slide" variant="cta" size="m" class="full-width slide-create-primary">
-              Create Slides
-            </sp-button>
-            <sp-button id="btn-prompt-select-slides" variant="secondary" size="m" class="full-width slide-prompt-selector-button">
-              Prompt Selector Slides
-            </sp-button>
-            <p class="hint-text">
-              Resizes the current document canvas to the Slide Setup width and
-              height, fits the active image to the slide height, and can
-              optionally create a sharper 2x layout. Use Scale for Export to
-              upscale the full document to 3x, 4x, or 5x before exporting.
-            </p>
-
-            <!-- NEW OPTIMIZATION BUTTONS -->
-            <div class="row-2" style="display: flex; gap: 8px; margin-top: 8px;">
-              <sp-button id="btn-optimize-canvas" variant="secondary" size="s" style="flex: 1;">Optimize Canvas</sp-button>
-              <sp-button id="btn-scale-for-export" variant="secondary" size="s" style="flex: 1;">Scale for Export</sp-button>
             </div>
           </section>
 
-          <section class="card">
-            <div class="section-header">
-              <span class="section-kicker">Align</span>
-              <span class="section-title">Guides</span>
-            </div>
-
-            <div class="row-2">
-              <sp-button id="btn-add-guides" variant="secondary" size="s">Add Guides</sp-button>
-              <sp-button id="btn-clear-guides" variant="secondary" size="s">Clear Guides</sp-button>
-            </div>
-            <p class="hint-text">
-              Use guides while building slides, then clear them before export if
-              you want a clean canvas.
-            </p>
-          </section>
-          <section class="card">
-            <div class="section-header">
-              <span class="section-kicker">Deliver</span>
-              <span class="section-title">Export</span>
-            </div>
-
-            <div class="field-row">
-              <span class="field-label">Format</span>
-              <div class="dropdown-wrap">
-                <sp-dropdown id="export-format" class="native-select" value="jpg">
-                  <sp-menu slot="options">
-                    <sp-menu-item value="jpg">JPG</sp-menu-item>
-                    <sp-menu-item value="png">PNG</sp-menu-item>
-                  </sp-menu>
-                </sp-dropdown>
-                <span class="dropdown-inline-label" id="export-format-inline">JPG</span>
+          <section class="card slide-utility-card slide-guides-card">
+            <div class="section-header slide-mini-header">
+              <div class="slide-mini-title">
+                <span class="section-kicker">Align</span>
+                <span class="section-title">Guides</span>
+              </div>
+              <div class="slide-guides-mark" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
             </div>
 
-            <div class="field-row">
-              <span class="field-label">JPG Quality (1-12)</span>
-              <sp-textfield id="export-quality" value="12" type="number" size="s"></sp-textfield>
+            <div class="slide-guides-actions">
+              <div class="row-2">
+                <sp-button id="btn-add-guides" variant="secondary" size="s">Add Guides</sp-button>
+                <sp-button id="btn-clear-guides" variant="secondary" size="s">Clear Guides</sp-button>
+              </div>
+              <p class="hint-text">
+                Use guides while building slides, then clear them before export if
+                you want a clean canvas.
+              </p>
+            </div>
+          </section>
+          <section class="card slide-utility-card slide-export-card">
+            <div class="section-header slide-mini-header">
+              <div class="slide-mini-title">
+                <span class="section-kicker">Deliver</span>
+                <span class="section-title">Export</span>
+              </div>
+              <div class="slide-export-mark" aria-hidden="true">
+                <span></span>
+                <span></span>
+              </div>
             </div>
 
-            <div class="action-group">
-              <div class="step-row">
-                <div class="step-badge">1</div>
-                <div class="step-text">
-                  Split the current layout into separate slide documents.
+            <div class="slide-export-settings">
+              <div class="field-row">
+                <span class="field-label">Format</span>
+                <div class="dropdown-wrap">
+                  <sp-dropdown id="export-format" class="native-select" value="jpg">
+                    <sp-menu slot="options">
+                      <sp-menu-item value="jpg">JPG</sp-menu-item>
+                      <sp-menu-item value="png">PNG</sp-menu-item>
+                    </sp-menu>
+                  </sp-dropdown>
+                  <span class="dropdown-inline-label" id="export-format-inline">JPG</span>
                 </div>
               </div>
-              <div class="row-2 crop-slides-row-visible">
-                <sp-button id="btn-crop-slides" variant="secondary" size="s">Crop Slides</sp-button>
-                <sp-button id="btn-prompt-crop-slides" variant="secondary" size="s">Prompt Selector Slides</sp-button>
+
+              <div class="field-row">
+                <span class="field-label">JPG Quality (1-12)</span>
+                <sp-textfield id="export-quality" value="12" type="number" size="s"></sp-textfield>
               </div>
             </div>
 
-            <div class="action-group">
-              <div class="step-row">
-                <div class="step-badge">2</div>
-                <div class="step-text">
-                  Export every open slide document in the chosen format.
+            <div class="slide-export-rail">
+              <div class="action-group">
+                <div class="step-row">
+                  <div class="step-badge">1</div>
+                  <div class="step-text">
+                    Split the current layout into separate slide documents.
+                  </div>
+                </div>
+                <div class="row-2 crop-slides-row-visible">
+                  <sp-button id="btn-crop-slides" variant="secondary" size="s">Crop Slides</sp-button>
+                  <sp-button id="btn-prompt-crop-slides" variant="secondary" size="s">Prompt Selector Slides</sp-button>
                 </div>
               </div>
-              <sp-button id="btn-export-slides" variant="cta" size="m" class="full-width hidden">Export All
-                Slides</sp-button>
+
+              <div class="action-group">
+                <div class="step-row">
+                  <div class="step-badge">2</div>
+                  <div class="step-text">
+                    Export every open slide document in the chosen format.
+                  </div>
+                </div>
+                <sp-button id="btn-export-slides" variant="cta" size="m" class="full-width hidden">Export All
+                  Slides</sp-button>
+              </div>
             </div>
           </section>
 
-          <section class="card" id="delete-slides-card">
+          <section class="card slide-utility-card slide-delete-card" id="delete-slides-card">
             <div class="section-header">
               <span class="section-kicker">Manage</span>
               <span class="section-title">Delete Slides</span>
@@ -433,14 +505,22 @@
           </section>
         </section>
 
-        <section class="tab-panel" data-tab-panel="layers">
-          <section class="card">
-            <div class="section-header">
-              <span class="section-kicker">Auto</span>
-              <span class="section-title">Organize by Slides</span>
+        <section class="tab-panel layers-setup-panel" data-tab-panel="layers">
+          <section class="card layers-hero-card">
+            <div class="layers-hero">
+              <div class="layers-hero-copy">
+                <span class="section-kicker">Layer Deck</span>
+                <span class="section-title">Organize by Slides</span>
+                <span class="layers-hero-subtitle">Sort, filter, color, and group document layers without losing the canvas layout.</span>
+              </div>
+              <div class="layers-stack-mark" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
             </div>
 
-            <div class="action-group" style="margin-top: 4px;">
+            <div class="action-group layers-auto-action">
               <sp-button id="btn-organize-slides" variant="secondary" size="m" class="full-width">
                 Organize Layers into Slides
               </sp-button>
@@ -451,27 +531,30 @@
             </div>
           </section>
 
-          <section class="card">
-            <div class="section-header">
-              <span class="section-kicker">Manage</span>
-              <span class="section-title">Layer Organization</span>
+          <section class="card layers-browser-card">
+            <div class="section-header layers-mini-header">
+              <div class="layers-mini-title">
+                <span class="section-kicker">Manage</span>
+                <span class="section-title">Layer Organization</span>
+              </div>
+              <span class="layers-chip">Filter ready</span>
             </div>
 
-            <div class="field-row">
+            <div class="field-row layers-search-row">
               <span class="field-label">Search Layers</span>
               <sp-textfield id="layer-search-input" placeholder="Find layer by name..." size="s" class="full-width">
                 <sp-icon slot="icon" name="ui:Magnifier" size="s"></sp-icon>
               </sp-textfield>
             </div>
 
-            <div class="field-row">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
-                <div style="display:flex; align-items:center; gap:8px;">
+            <div class="field-row layers-list-field">
+              <div class="layers-list-toolbar">
+                <label class="layers-select-all">
                   <input type="checkbox" id="layer-select-all" style="width:14px; height:14px; margin:0;"
                     title="Select All Filtered">
                   <span class="field-label" id="layer-list-header">Layer List</span>
-                </div>
-                <div style="display:flex; gap:8px;">
+                </label>
+                <div class="layers-list-actions">
                   <span id="btn-refresh-layers" class="clear-btn" title="Refresh List">Refresh</span>
                   <span id="clear-color-filter" class="clear-btn hidden" title="Show All Colors">Reset</span>
                 </div>
@@ -485,19 +568,22 @@
             </div>
           </section>
 
-          <section class="card">
-            <div class="section-header">
-              <span class="section-kicker">Actions</span>
-              <span class="section-title">Apply Style</span>
+          <section class="card layers-action-card">
+            <div class="section-header layers-mini-header">
+              <div class="layers-mini-title">
+                <span class="section-kicker">Actions</span>
+                <span class="section-title">Apply Style</span>
+              </div>
+              <span class="layers-chip layers-chip-green">Batch</span>
             </div>
 
-            <div class="field-row">
+            <div class="field-row layers-name-row">
               <span class="field-label">Layer/Group Name</span>
               <sp-textfield id="layer-action-name" placeholder="Enter name..." size="s"
                 class="full-width"></sp-textfield>
             </div>
 
-            <div class="field-row">
+            <div class="field-row layers-color-row">
               <span class="field-label">Label Color</span>
               <div id="color-palette" class="color-palette">
                 <div class="color-swatch-item" data-color="none" title="None"></div>
@@ -511,7 +597,7 @@
               </div>
             </div>
 
-            <div class="action-stack">
+            <div class="action-stack layers-action-stack">
               <sp-button id="btn-group-color" variant="cta" size="m" class="full-width">Group & Color</sp-button>
               <sp-button id="btn-color-only" variant="secondary" size="m" class="full-width">Auto-Color
                 Selected</sp-button>
@@ -728,7 +814,7 @@
           </section>
         </section>
 
-        <section class="tab-panel" data-tab-panel="tools">
+        <section class="tab-panel tools-setup-panel" data-tab-panel="tools">
           <div id="panel-root" class="auto-resize-root"></div>
         </section>
 

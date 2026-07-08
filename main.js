@@ -2311,16 +2311,9 @@ async function duplicateArtboardWithDesign() {
   }
 
   setStatus("Duplicating artboard with designâ€¦", "working");
-  let preselectedArtboard = null;
-  try {
-    preselectedArtboard = getSelectedLikelyArtboardInfoNoBatch(doc);
-  } catch (_) {
-    preselectedArtboard = null;
-  }
-
   try {
     await core.executeAsModal(async () => {
-      let sourceArtboard = preselectedArtboard;
+      let sourceArtboard = await getSelectedOrFirstRealArtboardInfo(doc);
       let sourceLayer = sourceArtboard ? getLayerById(doc, sourceArtboard.id) : null;
 
       if (!sourceArtboard || !sourceLayer) {
@@ -2423,9 +2416,9 @@ async function artboardFromLayerSize() {
   setStatus("Reading current canvas sizeâ€¦", "working");
   try {
     await core.executeAsModal(async () => {
-      const designBounds = getVisibleDesignBounds(doc);
-      const artW = Math.max(1, Math.round(Number(designBounds.width || (designBounds.right - designBounds.left)) || 1));
-      const artH = Math.max(1, Math.round(Number(designBounds.height || (designBounds.bottom - designBounds.top)) || 1));
+      const artW = Math.max(1, Math.round(Number(doc.width) || 1));
+      const artH = Math.max(1, Math.round(Number(doc.height) || 1));
+      const canvasBounds = { left: 0, top: 0, right: artW, bottom: artH, width: artW, height: artH };
 
       if (artW < 1 || artH < 1) throw new Error(`Invalid canvas size: ${artW}Ã—${artH}`);
 
@@ -2435,8 +2428,8 @@ async function artboardFromLayerSize() {
         position,
         count,
         name,
-        expandCanvas: false,
-        anchorBounds: designBounds,
+        expandCanvas: true,
+        anchorBounds: canvasBounds,
       });
 
     }, { commandName: "Artboard from Canvas Size" });
@@ -3475,7 +3468,6 @@ function handleButtonClick(event) {
     case "btn-add-guides": addGuides(); break;
     case "btn-clear-guides": clearGuides(); break;
     case "btn-crop-slides": cropSlides(); break;
-    case "btn-prompt-select-slides": showPromptSlideSelectorModal(); break;
     case "btn-prompt-crop-slides": showPromptSlideSelectorModal(); break;
     case "btn-export-slides": showExportOptionsModal(); break;
 
@@ -3671,13 +3663,14 @@ function mergeSlideAssignments(target, source) {
   return target;
 }
 
-function collectSlideAssignments(layer, slideRegions, artboardIds = new Set()) {
+function collectSlideAssignments(layer, slideRegions, artboardIds = new Set(), options = {}) {
   const assignments = new Map();
   if (!layer || layer.isBackgroundLayer || isSlideFolderLayer(layer)) return assignments;
 
   const layerId = toNumberId(layer.id);
   const isArtboardContainer = layerId !== null && artboardIds.has(layerId);
   const hasChildren = !!(layer.layers && layer.layers.length > 0);
+  const collapseSingleGroups = options.collapseSingleGroups !== false;
 
   let bounds = null;
   try {
@@ -3689,14 +3682,14 @@ function collectSlideAssignments(layer, slideRegions, artboardIds = new Set()) {
   if (hasChildren) {
     const childAssignments = new Map();
     for (const child of Array.from(layer.layers || [])) {
-      mergeSlideAssignments(childAssignments, collectSlideAssignments(child, slideRegions, artboardIds));
+      mergeSlideAssignments(childAssignments, collectSlideAssignments(child, slideRegions, artboardIds, options));
     }
 
     if (isArtboardContainer) {
       return childAssignments;
     }
 
-    if (childAssignments.size === 1 && !isArtboardContainer) {
+    if (collapseSingleGroups && childAssignments.size === 1 && !isArtboardContainer) {
       const [[slideIndex]] = childAssignments.entries();
       if (layerId !== null) {
         childAssignments.clear();
@@ -3706,6 +3699,7 @@ function collectSlideAssignments(layer, slideRegions, artboardIds = new Set()) {
     }
 
     if (childAssignments.size > 0) return childAssignments;
+    if (!collapseSingleGroups) return childAssignments;
   }
 
   if (isEmptyBounds(bounds)) return assignments;
@@ -3799,13 +3793,8 @@ async function createSourceArtboardFromDocument(doc, baseName) {
 }
 
 async function getAllArtboardInfos(doc) {
-  return Array.from(doc.layers || [])
-    .filter((layer) => layer && layer.parent === doc)
-    .map((layer) => ({
-      id: toNumberId(layer.id),
-      bounds: getArtboardLikeBounds(layer),
-    }))
-    .filter((item) => item.id !== null);
+  if (!doc) return [];
+  return getRealArtboardInfos(doc);
 }
 
 async function getOccupiedBounds(doc) {
@@ -3821,57 +3810,57 @@ async function getOccupiedBounds(doc) {
 }
 
 async function getTargetArtboardInfo(doc) {
-  const activeLayers = Array.from(doc.activeLayers || []);
-
-  for (const layer of activeLayers) {
-    const artboardLayer = getTopLevelArtboardLayer(layer, doc);
-    if (artboardLayer) {
-      return {
-        id: toNumberId(artboardLayer.id),
-        bounds: getArtboardLikeBounds(artboardLayer),
-      };
-    }
-  }
-
-  const fallbackLayer = getPrimaryTopLevelLayer(doc);
-  if (fallbackLayer) {
-    return {
-      id: toNumberId(fallbackLayer.id),
-      bounds: getArtboardLikeBounds(fallbackLayer),
-    };
-  }
-
-  return null;
+  return getSelectedOrFirstRealArtboardInfo(doc);
 }
 
 async function createSlideLayoutDocument(overrideInputs = null) {
   const { slideW, slideH, slideCount, exportPrefix } = overrideInputs || getSlideInputs();
   const totalW = Math.max(1, Math.round(slideW * slideCount));
+  const targetH = Math.max(1, Math.round(slideH));
 
   setStatus(`Scaling layout to ${slideCount} slides at ${slideW}x${slideH} px...`, "working");
   try {
     const doc = app.activeDocument;
     if (!doc) throw new Error("Open the document you want to turn into slides first.");
     const currentSize = getDocumentPixelSize(doc);
+    const designBounds = getVisibleDesignBounds(doc);
+    const designW = Math.max(1, Math.round(Number(designBounds.width || (designBounds.right - designBounds.left)) || currentSize.width));
+    const designH = Math.max(1, Math.round(Number(designBounds.height || (designBounds.bottom - designBounds.top)) || currentSize.height));
+    const fillScale = Math.max(totalW / designW, targetH / designH);
+    const safeScale = Number.isFinite(fillScale) && fillScale > 0 ? fillScale : 1;
+    const scaledW = Math.max(1, Math.round(designW * safeScale));
+    const scaledH = Math.max(1, Math.round(designH * safeScale));
+    const trimX = -Math.round(Number(designBounds.left) || 0);
+    const trimY = -Math.round(Number(designBounds.top) || 0);
 
     await core.executeAsModal(async () => {
+      if (
+        Math.abs(trimX) > 0 ||
+        Math.abs(trimY) > 0 ||
+        designW !== currentSize.width ||
+        designH !== currentSize.height
+      ) {
+        await resizeActiveDocumentCanvas(designW, designH, trimX, trimY);
+      }
       await resizeDocumentImageCompat(
         doc,
-        totalW,
-        slideH,
+        scaledW,
+        scaledH,
         currentSize.resolution,
         FAST_RESAMPLE_PRIMARY,
-        FAST_RESAMPLE_FALLBACK
+        FAST_RESAMPLE_FALLBACK,
+        true
       );
+      await resizeActiveDocumentCanvas(totalW, targetH, 0, 0);
     }, { commandName: "Create Slides" });
 
     originalDocId = doc.id;
     slides = [];
     selectedSlideId = null;
-    saveSlideLayoutState(doc, { slideW, slideH, slideCount, totalW });
+    saveSlideLayoutState(doc, { slideW, slideH: targetH, slideCount, totalW });
     renderThumbnails();
     updateDeleteSlidesUI();
-    setStatus(`Scaled the whole layout to ${totalW}x${slideH} px for ${slideCount} slides`, "success");
+    setStatus(`Scaled the layout to ${totalW}x${targetH} px for ${slideCount} slides without stretching photos`, "success");
   } catch (e) {
     showError("Create Slides failed", e);
   }
@@ -3938,7 +3927,7 @@ function getResampleMethod(primaryName, fallbackName) {
   return methods[primaryName] || methods[fallbackName] || methods.BICUBIC || methods.AUTOMATIC;
 }
 
-async function resizeDocumentImageCompat(doc, width, height, resolution, primaryMethod, fallbackMethod) {
+async function resizeDocumentImageCompat(doc, width, height, resolution, primaryMethod, fallbackMethod, constrainProportions = false) {
   const safeWidth = Math.max(1, Math.round(Number(width) || 1));
   const safeHeight = Math.max(1, Math.round(Number(height) || 1));
   const safeResolution = Math.max(1, Number(resolution) || 72);
@@ -3954,7 +3943,7 @@ async function resizeDocumentImageCompat(doc, width, height, resolution, primary
         width: { _unit: "pixelsUnit", _value: safeWidth },
         height: { _unit: "pixelsUnit", _value: safeHeight },
         resolution: { _unit: "densityUnit", _value: safeResolution },
-        constrainProportions: false,
+        constrainProportions: !!constrainProportions,
         interfaceIconFrameDimmed: { _enum: "interpolationType", _value: "automaticInterpolation" },
         _options: { dialogOptions: "dontDisplay" },
       }], {
@@ -4032,20 +4021,23 @@ function showScaleForExportDialog() {
         <h3>Scale for Export</h3>
         <button class="modal-close" id="close-scale-export-modal">&times;</button>
       </div>
-      <div class="tool-modal-body">
-        <div class="guide-layer-region-summary">
+      <div class="tool-modal-body scale-export-body">
+        <div class="guide-layer-region-summary scale-export-summary">
           <strong>Choose export scale</strong>
           <span>This multiplies the current canvas and all layers together.</span>
         </div>
-        <div class="text-slide-align-grid">
-          <button type="button" class="text-slide-align-mode selected" data-scale-multiplier="3">
-            <span>3x</span>
+        <div class="scale-export-grid" role="radiogroup" aria-label="Export scale">
+          <button type="button" class="scale-export-option selected" data-scale-multiplier="3" aria-pressed="true">
+            <strong>3x</strong>
+            <span>Sharp</span>
           </button>
-          <button type="button" class="text-slide-align-mode" data-scale-multiplier="4">
-            <span>4x</span>
+          <button type="button" class="scale-export-option" data-scale-multiplier="4" aria-pressed="false">
+            <strong>4x</strong>
+            <span>Large</span>
           </button>
-          <button type="button" class="text-slide-align-mode" data-scale-multiplier="5">
-            <span>5x</span>
+          <button type="button" class="scale-export-option" data-scale-multiplier="5" aria-pressed="false">
+            <strong>5x</strong>
+            <span>Max</span>
           </button>
         </div>
       </div>
@@ -4065,10 +4057,15 @@ function showScaleForExportDialog() {
   modal.querySelectorAll("[data-scale-multiplier]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedMultiplier = Math.max(1, Number(button.dataset.scaleMultiplier) || 3);
-      modal.querySelectorAll("[data-scale-multiplier]").forEach((item) => item.classList.toggle("selected", item === button));
+      modal.querySelectorAll("[data-scale-multiplier]").forEach((item) => {
+        const selected = item === button;
+        item.classList.toggle("selected", selected);
+        item.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
     });
   });
   modal.querySelector("#apply-scale-export").addEventListener("click", async () => {
+    close();
     await scaleForExport(selectedMultiplier);
   });
 }
@@ -4134,6 +4131,77 @@ async function getCurrentSlideRegionsForDoc(doc, savedState = null) {
   return buildCanvasSlideRegions(docWidth, docHeight, inferredCount);
 }
 
+function isPhotoLikeLayerForSlideResize(layer) {
+  const kind = String(layer && layer.kind ? layer.kind : "").toLowerCase();
+  return kind === "pixel" || kind === "normal" || kind === "smartobject" || kind === "image";
+}
+
+function shouldCoverTargetRegion(layer, sourceRect, fromWidth, fromHeight) {
+  if (!isPhotoLikeLayerForSlideResize(layer) || !sourceRect) return false;
+  const sourceWidth = Math.max(0, Number(sourceRect.width || (sourceRect.right - sourceRect.left)) || 0);
+  const sourceHeight = Math.max(0, Number(sourceRect.height || (sourceRect.bottom - sourceRect.top)) || 0);
+  return sourceWidth >= fromWidth * 0.82 && sourceHeight >= fromHeight * 0.82;
+}
+
+function canTransformLayerForSlideResize(layer) {
+  if (!layer || layer.locked || layer.isBackgroundLayer || isSlideFolderLayer(layer)) return false;
+  if (layer.layers && layer.layers.length) return false;
+  const kind = String(layer.kind || "").toLowerCase();
+  if (kind.includes("adjustment") || kind.includes("brightness") || kind.includes("levels")) return false;
+  const rect = getLayerBoundsRect(layer);
+  return !!rect && !isEmptyBounds(rect);
+}
+
+function batchPlayHasError(result) {
+  return Array.isArray(result) && result.some((item) => item && item._obj === "error");
+}
+
+function isTransformUnavailableError(error) {
+  const message = String(error && (error.message || error.toString()) || "");
+  return /transform/i.test(message) && /not currently available/i.test(message);
+}
+
+async function selectLayerForSlideResize(layer) {
+  if (!layer || layer.id === undefined) return false;
+  try {
+    const result = await action.batchPlay([{
+      _obj: "select",
+      _target: [{ _ref: "layer", _id: layer.id }],
+      makeVisible: false,
+      _options: { dialogOptions: "dontDisplay" },
+    }], { synchronousExecution: true, continueOnError: true });
+    return !batchPlayHasError(result);
+  } catch (error) {
+    console.warn("Skipping layer because Photoshop rejected layer selection.", {
+      layerId: layer && layer.id,
+      layerName: layer && layer.name,
+      kind: layer && layer.kind,
+      error,
+    });
+    return false;
+  }
+}
+
+async function moveSelectedLayerForSlideResize(tx, ty) {
+  if (Math.abs(tx) <= 0.1 && Math.abs(ty) <= 0.1) return true;
+  try {
+    const result = await action.batchPlay([{
+      _obj: "move",
+      _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }],
+      to: {
+        _obj: "offset",
+        horizontal: { _unit: "pixelsUnit", _value: tx },
+        vertical: { _unit: "pixelsUnit", _value: ty },
+      },
+      _options: { dialogOptions: "dontDisplay" },
+    }], { synchronousExecution: true, continueOnError: true });
+    return !batchPlayHasError(result);
+  } catch (error) {
+    console.warn("Skipping layer move because Photoshop rejected it.", { tx, ty, error });
+    return false;
+  }
+}
+
 async function resizeLayerToSlideRegion(layer, fromRegion, toRegion) {
   const sourceRect = getLayerBoundsRect(layer);
   if (!sourceRect || !fromRegion || !toRegion) return;
@@ -4141,39 +4209,75 @@ async function resizeLayerToSlideRegion(layer, fromRegion, toRegion) {
   const fromHeight = Math.max(1, Number(fromRegion.height || (fromRegion.bottom - fromRegion.top)));
   const toWidth = Math.max(1, Number(toRegion.width || (toRegion.right - toRegion.left)));
   const toHeight = Math.max(1, Number(toRegion.height || (toRegion.bottom - toRegion.top)));
-  const scaleX = (toWidth / fromWidth) * 100;
-  const scaleY = (toHeight / fromHeight) * 100;
-  const targetLeft = Number(toRegion.left) + ((sourceRect.left - Number(fromRegion.left)) / fromWidth) * toWidth;
-  const targetTop = Number(toRegion.top) + ((sourceRect.top - Number(fromRegion.top)) / fromHeight) * toHeight;
+  const rawScaleX = toWidth / fromWidth;
+  const rawScaleY = toHeight / fromHeight;
+  const uniformScale = shouldCoverTargetRegion(layer, sourceRect, fromWidth, fromHeight)
+    ? Math.max(rawScaleX, rawScaleY)
+    : Math.min(rawScaleX, rawScaleY);
+  const scaleX = uniformScale * 100;
+  const scaleY = uniformScale * 100;
+  const sourceCenterX = sourceRect.left + ((sourceRect.right - sourceRect.left) / 2);
+  const sourceCenterY = sourceRect.top + ((sourceRect.bottom - sourceRect.top) / 2);
+  const targetCenterX = Number(toRegion.left) + ((sourceCenterX - Number(fromRegion.left)) / fromWidth) * toWidth;
+  const targetCenterY = Number(toRegion.top) + ((sourceCenterY - Number(fromRegion.top)) / fromHeight) * toHeight;
 
-  await action.batchPlay([{
-    _obj: "select",
-    _target: [{ _ref: "layer", _id: layer.id }],
-    makeVisible: false,
-    _options: { dialogOptions: "dontDisplay" },
-  }], { synchronousExecution: true });
+  const didSelect = await selectLayerForSlideResize(layer);
+  if (!didSelect) return;
 
   if (Number.isFinite(scaleX) && Number.isFinite(scaleY) && (Math.abs(scaleX - 100) > 0.1 || Math.abs(scaleY - 100) > 0.1)) {
-    await action.batchPlay([{
-      _obj: "transform",
-      _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }],
-      freeTransformCenterState: { _enum: "quadCenterState", _value: "QCSAverage" },
-      offset: {
-        _obj: "offset",
-        horizontal: { _unit: "pixelsUnit", _value: 0 },
-        vertical: { _unit: "pixelsUnit", _value: 0 },
-      },
-      width: { _unit: "percentUnit", _value: scaleX },
-      height: { _unit: "percentUnit", _value: scaleY },
-      _options: { dialogOptions: "dontDisplay" },
-    }], { synchronousExecution: true });
+    try {
+      const transformResult = await action.batchPlay([{
+        _obj: "transform",
+        _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }],
+        freeTransformCenterState: { _enum: "quadCenterState", _value: "QCSAverage" },
+        offset: {
+          _obj: "offset",
+          horizontal: { _unit: "pixelsUnit", _value: 0 },
+          vertical: { _unit: "pixelsUnit", _value: 0 },
+        },
+        width: { _unit: "percentUnit", _value: scaleX },
+        height: { _unit: "percentUnit", _value: scaleY },
+        _options: { dialogOptions: "dontDisplay" },
+      }], { synchronousExecution: true, continueOnError: true });
+      if (batchPlayHasError(transformResult)) return;
+    } catch (error) {
+      console.warn("Skipping layer resize because Photoshop rejected Transform.", {
+        layerId: layer && layer.id,
+        layerName: layer && layer.name,
+        kind: layer && layer.kind,
+        error,
+      });
+      return;
+    }
   }
 
   const resizedRect = getLayerBoundsRect(layer);
   if (!resizedRect) return;
-  const tx = targetLeft - resizedRect.left;
-  const ty = targetTop - resizedRect.top;
-  if (Math.abs(tx) > 0.1 || Math.abs(ty) > 0.1) await layer.translate(tx, ty);
+  const resizedCenterX = resizedRect.left + ((resizedRect.right - resizedRect.left) / 2);
+  const resizedCenterY = resizedRect.top + ((resizedRect.bottom - resizedRect.top) / 2);
+  const tx = targetCenterX - resizedCenterX;
+  const ty = targetCenterY - resizedCenterY;
+  await moveSelectedLayerForSlideResize(tx, ty);
+}
+
+async function tryResizeLayerToSlideRegion(layer, fromRegion, toRegion) {
+  try {
+    await resizeLayerToSlideRegion(layer, fromRegion, toRegion);
+    return true;
+  } catch (error) {
+    const payload = {
+      layerId: layer && layer.id,
+      layerName: layer && layer.name,
+      kind: layer && layer.kind,
+      error,
+    };
+    if (isTransformUnavailableError(error)) {
+      console.warn("Skipping layer resize because Transform is unavailable for this layer.", payload);
+    } else {
+      console.warn("Skipping layer resize because Photoshop rejected the layer operation.", payload);
+    }
+    return false;
+  }
 }
 
 function buildRegionEnvelope(regions) {
@@ -4217,8 +4321,8 @@ async function reflowLayersToSlideRegions(doc, slideAssignments, previousRegions
 
     for (const layerId of ids) {
       const layer = getLayerById(doc, layerId);
-      if (!layer || layer.locked) continue;
-      await resizeLayerToSlideRegion(layer, fromRegion, toRegion);
+      if (!canTransformLayerForSlideResize(layer)) continue;
+      await tryResizeLayerToSlideRegion(layer, fromRegion, toRegion);
       handledLayerIds.add(layerId);
     }
   }
@@ -4227,9 +4331,9 @@ async function reflowLayersToSlideRegions(doc, slideAssignments, previousRegions
   const targetLayoutRegion = buildRegionEnvelope(nextRegions);
   if (!sourceLayoutRegion || !targetLayoutRegion) return;
 
-  for (const layer of Array.from(doc.layers || [])) {
+  for (const layer of getAllLayersRecursive(doc)) {
     const layerId = toNumberId(layer && layer.id);
-    if (!layer || layer.locked || layer.isBackgroundLayer || isSlideFolderLayer(layer)) continue;
+    if (!canTransformLayerForSlideResize(layer)) continue;
     if (layerId !== null && artboardIds.has(layerId)) continue;
     if (layerTreeContainsAssignedLayer(layer, handledLayerIds)) continue;
     const layerRect = getLayerBoundsRect(layer);
@@ -4241,11 +4345,11 @@ async function reflowLayersToSlideRegions(doc, slideAssignments, previousRegions
       const fromRegion = regionByIndex.get(preferredSlide);
       const toRegion = nextRegions[Math.min(Math.max(0, preferredSlide - 1), nextRegions.length - 1)] || null;
       if (fromRegion && toRegion) {
-        await resizeLayerToSlideRegion(layer, fromRegion, toRegion);
+        await tryResizeLayerToSlideRegion(layer, fromRegion, toRegion);
         continue;
       }
     }
-    await resizeLayerToSlideRegion(layer, sourceLayoutRegion, targetLayoutRegion);
+    await tryResizeLayerToSlideRegion(layer, sourceLayoutRegion, targetLayoutRegion);
   }
 }
 
@@ -4568,6 +4672,7 @@ const BUTTON_DEFS = {
   "btn-place-embed": { title: "Place Embedded", variant: "place-embed", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>` },
   "btn-paste-text-lines": { title: "Paste Styled Text Lines", isPill: true, pillLabel: "Paste Text", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M12 5v14"/><path d="M8 19h8"/><path d="M5 11h4"/><path d="M15 11h4"/></svg>` },
   "btn-text-manager": { title: "Text Manager", isPill: true, pillLabel: "Text Manager", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>` },
+  "btn-text-layer-control": { title: "Text Layer Controls", isPill: true, pillLabel: "Text Layers", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M12 5v14"/><path d="M8 19h8"/><path d="M5 11h4"/><path d="M16 10s2.5 1.7 4 4c-1.5 2.3-4 4-4 4s-2.5-1.7-4-4c1.5-2.3 4-4 4-4Z"/><circle cx="16" cy="14" r="1.4"/></svg>` },
   "btn-notes-board": { title: "Notes Board", isPill: true, pillLabel: "Notes", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h5"/><path d="M15 15l2 2 3-4"/></svg>` },
   "btn-new-layer": { title: "New Layer", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>` },
   "btn-rasterize": { title: "Rasterize Layer", isPill: true, pillLabel: "Rasterize", pillVariant: "rasterize", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="8" rx="1.5"/><path d="M15 5h2M19 5h.01M15 9h.01M19 9h2M15 13h2M19 13h.01M15 17h.01M19 17h2"/><path d="M11 8l4 4"/></svg>` },
@@ -4591,7 +4696,7 @@ const BUTTON_DEFS = {
 
 const DEFAULT_LAYOUT = [
   [{ id: "g-transform", name: "Transform", buttons: ["btn-width", "btn-both", "btn-stretch-all", "btn-rotate-left", "btn-rotate-right", "btn-smart-object", "btn-smart-merge", "btn-stamp-visible", "btn-place-embed", "btn-new-layer"] }],
-  [{ id: "g-text-tools", name: "Text", buttons: ["btn-convert-layers", "btn-paste-text-lines", "btn-text-manager", "btn-notes-board", "btn-default-export-folder", "btn-rasterize", "btn-remove-effects", "btn-guide-layer-order", "btn-duplicate-effects", "btn-text-slide-align"] }],
+  [{ id: "g-text-tools", name: "Text", buttons: ["btn-convert-layers", "btn-paste-text-lines", "btn-text-manager", "btn-text-layer-control", "btn-notes-board", "btn-default-export-folder", "btn-rasterize", "btn-remove-effects", "btn-guide-layer-order", "btn-duplicate-effects", "btn-text-slide-align"] }],
   [{ id: "g-align", name: "Align", buttons: ["btn-align-left", "btn-align-h-center", "btn-align-right", "btn-align-top", "btn-align-v-center", "btn-align-bottom"] }],
   [{ id: "g-flip", name: "Flip", buttons: ["btn-distribute-h", "btn-distribute-v"] },
   { id: "g-actions", name: "Actions", buttons: ["btn-visibility", "btn-invert", "btn-delete"] },
@@ -4696,7 +4801,7 @@ function ensureStampVisibleButton(layoutState) {
 }
 
 function normalizeTextToolsRow(layoutState) {
-  const textButtons = ["btn-convert-layers", "btn-paste-text-lines", "btn-text-manager", "btn-notes-board", "btn-default-export-folder", "btn-rasterize", "btn-remove-effects", "btn-guide-layer-order", "btn-duplicate-effects", "btn-text-slide-align"];
+  const textButtons = ["btn-convert-layers", "btn-paste-text-lines", "btn-text-manager", "btn-text-layer-control", "btn-notes-board", "btn-default-export-folder", "btn-rasterize", "btn-remove-effects", "btn-guide-layer-order", "btn-duplicate-effects", "btn-text-slide-align"];
 
   layoutState.forEach((row) => {
     row.forEach((group) => {
@@ -5113,6 +5218,23 @@ function renderLayout() {
   root.innerHTML = "";
   document.body.classList.toggle("layout-edit-mode", isLayoutEditMode);
 
+  const toolsHero = document.createElement("div");
+  toolsHero.className = "tools-command-hero";
+  toolsHero.innerHTML = `
+    <div class="tools-command-copy">
+      <span class="section-kicker">Command</span>
+      <span class="section-title">Tools Deck</span>
+      <span class="tools-command-subtitle">Fast layer actions, layout transforms, text utilities, and export controls in one compact board.</span>
+    </div>
+    <div class="tools-command-mark" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  `;
+  root.appendChild(toolsHero);
+
   const topBar = document.createElement("div");
   topBar.className = "panel-topbar";
   const editBtn = document.createElement("div");
@@ -5155,7 +5277,7 @@ function renderLayout() {
 
   const jpgBtn = document.createElement("div");
   jpgBtn.id = "tools-export-jpg-btn";
-  jpgBtn.className = "tools-jpg-btn";
+  jpgBtn.className = "tools-export-btn tools-jpg-btn";
   jpgBtn.innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -5171,7 +5293,8 @@ function renderLayout() {
 
   // â”€â”€ PNG Export button â”€â”€
   const pngBtn = document.createElement("div");
-  pngBtn.className = "tools-png-btn";
+  pngBtn.id = "tools-export-png-btn";
+  pngBtn.className = "tools-export-btn tools-png-btn";
   pngBtn.innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -5187,7 +5310,7 @@ function renderLayout() {
 
   // â”€â”€ Export All Layers button â”€â”€
   const exportAllBtn = document.createElement("div");
-  exportAllBtn.className = "tools-export-all-btn";
+  exportAllBtn.className = "tools-export-btn tools-export-all-btn";
   exportAllBtn.innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -5621,6 +5744,7 @@ function fireAction(id) {
     "btn-place-embed": placeEmbedded,
     "btn-paste-text-lines": showStyledTextPasteDialog,
     "btn-text-manager": showTextManagerDialog,
+    "btn-text-layer-control": showTextLayerControlDialog,
     "btn-notes-board": showNotesBoard,
     "btn-guide-layer-order": showGuideLayerOrderDialog,
     "btn-align-left": () => alignLayersToCanvas("left"),
@@ -7096,6 +7220,219 @@ function normalizeTextForTextarea(text) {
 
 function normalizeTextForPhotoshop(text) {
   return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n/g, "\r");
+}
+
+async function setTextLayersVisibleByIds(layerIds, visibleValue = null) {
+  const ids = Array.from(layerIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
+  if (!ids.length) return 0;
+  let changed = 0;
+
+  await core.executeAsModal(async () => {
+    const doc = app.activeDocument;
+    if (!doc) return;
+    for (const id of ids) {
+      const layer = getLayerById(doc, id);
+      if (!layer || layer.kind !== "text" || layer.locked) continue;
+      const nextVisible = visibleValue === null ? !layer.visible : !!visibleValue;
+      try {
+        layer.visible = nextVisible;
+        changed += 1;
+      } catch (error) {
+        console.warn("Could not update text layer visibility.", { id, error });
+      }
+    }
+  }, { commandName: "Toggle Text Layer Visibility" });
+
+  return changed;
+}
+
+async function deleteTextLayersByIds(layerIds) {
+  const ids = Array.from(layerIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
+  if (!ids.length) return 0;
+  let deleted = 0;
+
+  await core.executeAsModal(async () => {
+    const doc = app.activeDocument;
+    if (!doc) return;
+    for (const id of ids) {
+      const layer = getLayerById(doc, id);
+      if (!layer || layer.kind !== "text" || layer.locked) continue;
+      try {
+        await layer.delete();
+        deleted += 1;
+      } catch (error) {
+        console.warn("Could not delete text layer.", { id, error });
+      }
+    }
+  }, { commandName: "Delete Text Layers" });
+
+  return deleted;
+}
+
+async function showTextLayerControlDialog() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("No document open", "error");
+    return;
+  }
+
+  setStatus("Scanning text layers...", "working");
+  const textLayers = getAllLayersRecursive(doc).filter((layer) => layer && layer.kind === "text");
+  if (!textLayers.length) {
+    setStatus("No text layers found", "error");
+    return;
+  }
+
+  let textEntries = [];
+  try {
+    await core.executeAsModal(async () => {
+      textEntries = await fetchTextDescriptors(textLayers);
+    }, { commandName: "Scan Text Layers" });
+  } catch (error) {
+    showError("Text layer scan failed", error);
+    return;
+  }
+  if (!textEntries.length) {
+    textEntries = textLayers.map((layer) => ({
+      id: layer.id,
+      name: layer.name || "Text Layer",
+      descriptor: { name: layer.name || "Text Layer" },
+    }));
+  }
+
+  const visibleById = new Map(textLayers.map((layer) => [Number(layer.id), !!layer.visible]));
+  const existing = document.getElementById("text-layer-control-modal");
+  if (existing) existing.remove();
+
+  const selectedIds = new Set(textEntries.map((entry) => Number(entry.id)));
+  const modal = document.createElement("div");
+  modal.id = "text-layer-control-modal";
+  modal.className = "modal-overlay";
+  modal.innerHTML = `
+    <div class="text-manager-dialog text-layer-control-dialog">
+      <div class="text-manager-header">
+        <h3>Text Layers</h3>
+        <button id="close-text-layer-control-modal" class="text-manager-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="text-layer-control-toolbar">
+        <div class="text-layer-control-count">${textEntries.length} text layer${textEntries.length === 1 ? "" : "s"} found</div>
+        <div class="text-layer-control-actions-top">
+          <button id="text-layer-select-all" class="text-layer-mini-btn" type="button">Select All</button>
+          <button id="text-layer-select-none" class="text-layer-mini-btn" type="button">None</button>
+        </div>
+      </div>
+      <div id="text-layer-control-list" class="text-layer-control-list"></div>
+      <div class="text-manager-actions text-layer-control-footer">
+        <button id="text-layer-control-cancel" class="text-manager-button" type="button">Cancel</button>
+        <button id="text-layer-control-toggle" class="text-manager-button text-layer-toggle-selected" type="button">Toggle Selected</button>
+        <button id="text-layer-control-delete" class="text-manager-button text-layer-delete-selected" type="button">Delete Selected</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const list = modal.querySelector("#text-layer-control-list");
+  const closeModal = () => modal.remove();
+  const getSelectedIds = () => Array.from(selectedIds);
+  const syncFooter = () => {
+    const count = selectedIds.size;
+    modal.querySelector("#text-layer-control-toggle").textContent = count ? `Toggle ${count}` : "Toggle Selected";
+    modal.querySelector("#text-layer-control-delete").textContent = count ? `Delete ${count}` : "Delete Selected";
+  };
+  const renderRows = () => {
+    list.innerHTML = textEntries.map((entry) => {
+      const id = Number(entry.id);
+      const text = normalizeTextForTextarea(extractTextFromDescriptor(entry.descriptor) || entry.name || "Text Layer").trim();
+      const visible = visibleById.get(id) !== false;
+      const checked = selectedIds.has(id);
+      return `
+        <div class="text-layer-control-row ${visible ? "" : "is-hidden"}" data-layer-id="${id}">
+          <label class="text-layer-control-select">
+            <input class="text-layer-control-checkbox" type="checkbox" ${checked ? "checked" : ""}>
+            <span class="text-layer-control-preview">${escapeHtml(text || entry.name || "Text Layer")}</span>
+          </label>
+          <button class="text-layer-eye-btn ${visible ? "is-visible" : "is-hidden"}" type="button" title="${visible ? "Hide text layer" : "Show text layer"}" aria-label="${visible ? "Hide text layer" : "Show text layer"}">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M1.5 12s4-7 10.5-7 10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z"/>
+              <circle cx="12" cy="12" r="3"/>
+              ${visible ? "" : `<path d="M3 3l18 18"/>`}
+            </svg>
+          </button>
+        </div>
+      `;
+    }).join("");
+    syncFooter();
+  };
+
+  modal.querySelector("#close-text-layer-control-modal").addEventListener("click", closeModal);
+  modal.querySelector("#text-layer-control-cancel").addEventListener("click", closeModal);
+  modal.querySelector("#text-layer-select-all").addEventListener("click", () => {
+    textEntries.forEach((entry) => selectedIds.add(Number(entry.id)));
+    renderRows();
+  });
+  modal.querySelector("#text-layer-select-none").addEventListener("click", () => {
+    selectedIds.clear();
+    renderRows();
+  });
+
+  list.addEventListener("change", (event) => {
+    const checkbox = event.target.closest(".text-layer-control-checkbox");
+    if (!checkbox) return;
+    const row = checkbox.closest(".text-layer-control-row");
+    const id = Number(row && row.dataset.layerId);
+    if (!Number.isFinite(id)) return;
+    if (checkbox.checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+    syncFooter();
+  });
+
+  list.addEventListener("click", async (event) => {
+    const eyeButton = event.target.closest(".text-layer-eye-btn");
+    if (!eyeButton) return;
+    const row = eyeButton.closest(".text-layer-control-row");
+    const id = Number(row && row.dataset.layerId);
+    if (!Number.isFinite(id)) return;
+    const changed = await setTextLayersVisibleByIds([id], null);
+    if (!changed) return;
+    visibleById.set(id, !visibleById.get(id));
+    renderRows();
+    setStatus("Text layer visibility updated.", "success");
+  });
+
+  modal.querySelector("#text-layer-control-toggle").addEventListener("click", async () => {
+    const ids = getSelectedIds();
+    if (!ids.length) {
+      setStatus("Select at least one text layer first.", "error");
+      return;
+    }
+    const changed = await setTextLayersVisibleByIds(ids, null);
+    ids.forEach((id) => visibleById.set(Number(id), !visibleById.get(Number(id))));
+    renderRows();
+    setStatus(`Toggled ${changed} text layer${changed === 1 ? "" : "s"}.`, "success");
+  });
+
+  modal.querySelector("#text-layer-control-delete").addEventListener("click", async () => {
+    const ids = getSelectedIds();
+    if (!ids.length) {
+      setStatus("Select at least one text layer first.", "error");
+      return;
+    }
+    const deleted = await deleteTextLayersByIds(ids);
+    const deletedSet = new Set(ids.map((id) => Number(id)));
+    textEntries = textEntries.filter((entry) => !deletedSet.has(Number(entry.id)));
+    ids.forEach((id) => {
+      selectedIds.delete(Number(id));
+      visibleById.delete(Number(id));
+    });
+    if (!textEntries.length) {
+      closeModal();
+    } else {
+      renderRows();
+    }
+    setStatus(`Deleted ${deleted} text layer${deleted === 1 ? "" : "s"}.`, "success");
+  });
+
+  renderRows();
 }
 
 async function showTextManagerDialog() {
@@ -9281,7 +9618,7 @@ async function refreshLayerList(query = "") {
                     ${iconUri}
                 </div>
                 <div class="layer-name" title="${layer.name}">${layer.name}</div>
-                <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-left:4px;${colorDotStyle}"></div>
+                <div class="layer-color-dot" style="${colorDotStyle}"></div>
             `;
 
       const check = item.querySelector(".layer-item-check");
@@ -9662,13 +9999,13 @@ document.addEventListener('sp-opened', (e) => {
                     style.id = 'injected-scroll-style-menu';
                     style.textContent = `
                         :host { scrollbar-width: thin !important; }
-                        ::-webkit-scrollbar { width: 2px !important; height: 3px !important; }
+                        ::-webkit-scrollbar { width: 3px !important; height: 3px !important; }
                         ::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; min-width: 0 !important; min-height: 0 !important; }
                         ::-webkit-scrollbar-track { background: transparent !important; }
-                        ::-webkit-scrollbar-thumb { border-radius: 8px !important; background: rgba(128,128,128,0.35) !important; border: 0 !important; background-clip: padding-box !important; }
-                        ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.6) !important; }
+                        ::-webkit-scrollbar-thumb { border-radius: 999px !important; background: rgba(121,181,255,0.32) !important; border: 0 !important; background-clip: padding-box !important; }
+                        ::-webkit-scrollbar-thumb:hover { background: rgba(141,255,189,0.42) !important; }
                         * { scrollbar-width: thin !important; }
-                        *::-webkit-scrollbar { width: 2px !important; height: 3px !important; }
+                        *::-webkit-scrollbar { width: 3px !important; height: 3px !important; }
                         *::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
                     `;
                     menu.shadowRoot.appendChild(style);
@@ -9682,12 +10019,12 @@ document.addEventListener('sp-opened', (e) => {
                 style.id = 'injected-scroll-style-popover';
                 style.textContent = `
                     :host { scrollbar-width: thin !important; }
-                    ::-webkit-scrollbar { width: 2px !important; height: 3px !important; }
+                    ::-webkit-scrollbar { width: 3px !important; height: 3px !important; }
                     ::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; min-width: 0 !important; min-height: 0 !important; }
                     ::-webkit-scrollbar-track { background: transparent !important; }
-                    ::-webkit-scrollbar-thumb { border-radius: 8px !important; background: rgba(128,128,128,0.35) !important; border: 0 !important; background-clip: padding-box !important; }
+                    ::-webkit-scrollbar-thumb { border-radius: 999px !important; background: rgba(121,181,255,0.32) !important; border: 0 !important; background-clip: padding-box !important; }
                     * { scrollbar-width: thin !important; }
-                    *::-webkit-scrollbar { width: 2px !important; height: 3px !important; }
+                    *::-webkit-scrollbar { width: 3px !important; height: 3px !important; }
                     *::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
                 `;
                 popover.shadowRoot.appendChild(style);
