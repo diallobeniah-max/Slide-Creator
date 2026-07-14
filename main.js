@@ -2151,8 +2151,16 @@ async function getLayerDescriptorById(layerId) {
         { _ref: "document", _enum: "ordinal", _value: "targetEnum" },
       ],
       _options: { dialogOptions: "dontDisplay" },
-    }], { synchronousExecution: true });
-    return result && result[0] ? result[0] : null;
+    }], { synchronousExecution: true, continueOnError: true });
+    const descriptor = result && result[0] ? result[0] : null;
+    if (descriptor && descriptor._obj === "error") {
+      const message = String(descriptor.message || "");
+      if (/command [\u201c\"']?get[\u201d\"']? is not currently available/i.test(message)) {
+        console.warn("Skipped unavailable Photoshop Get command while detecting artboards.");
+      }
+      return null;
+    }
+    return descriptor;
   } catch (e) {
     return null;
   }
@@ -2182,7 +2190,9 @@ async function getRealArtboardInfos(doc) {
   const artboards = [];
   const seen = new Set();
 
-  for (const layer of flattenLayers((doc && doc.layers) || [])) {
+  // Photoshop artboards are top-level groups. Scanning every child layer here
+  // can enqueue hundreds of descriptor reads and temporarily block the panel.
+  for (const layer of getTopLevelLayers(doc)) {
     const artboard = await getArtboardInfoFromLayerId(layer.id);
     if (artboard && artboard.id !== null && !seen.has(artboard.id)) {
       seen.add(artboard.id);
@@ -2546,7 +2556,13 @@ async function clearGuides() {
 // Reads ONLY from Slide Setup fields (slide-size-preset, slide-count, etc.)
 
 async function cropSlides(selectedSlideNumbers = null) {
-  const { slideW, slideH, slideCount, exportPrefix } = getSlideInputs();
+  const configured = getSlideInputs();
+  const activeDoc = app.activeDocument;
+  const detected = activeDoc ? await detectSlideLayout(activeDoc) : null;
+  const slideW = detected ? detected.slideW : configured.slideW;
+  const slideH = detected ? detected.slideH : configured.slideH;
+  const slideCount = detected ? detected.slideCount : configured.slideCount;
+  const exportPrefix = configured.exportPrefix;
   const selectedSet = Array.isArray(selectedSlideNumbers) && selectedSlideNumbers.length
     ? new Set(selectedSlideNumbers.map((value) => Math.max(1, Math.min(slideCount, Math.round(Number(value) || 1)))))
     : null;
@@ -2637,8 +2653,10 @@ function closePromptSlideSelectorModal() {
   document.body.classList.remove("prompt-selector-modal-open");
 }
 
-function showPromptSlideSelectorModal() {
-  const { slideCount } = getSlideInputs();
+async function showPromptSlideSelectorModal() {
+  const configured = getSlideInputs();
+  const detected = app.activeDocument ? await detectSlideLayout(app.activeDocument) : null;
+  const slideCount = detected ? detected.slideCount : configured.slideCount;
   const count = Math.max(1, Math.round(Number(slideCount) || 1));
   closePromptSlideSelectorModal();
   document.body.classList.add("prompt-selector-modal-open");
@@ -2649,7 +2667,7 @@ function showPromptSlideSelectorModal() {
   modal.innerHTML = `
     <div class="modal-content layer-export-modal-content prompt-slide-selector-content">
       <div class="modal-header">
-        <h3>Prompt Selector Slides</h3>
+        <h3>Select Slides to Crop</h3>
         <button class="modal-close" id="close-prompt-slide-selector">&times;</button>
       </div>
       <div class="prompt-slide-selector-body">
@@ -2665,7 +2683,7 @@ function showPromptSlideSelectorModal() {
       </div>
       <div class="prompt-slide-selector-actions">
         <div class="btn-cancel prompt-slide-action" id="cancel-prompt-slide-selector" role="button" tabindex="0">Cancel</div>
-        <div class="btn-confirm prompt-slide-action" id="run-prompt-slide-selector" role="button" tabindex="0">Prompt Slides</div>
+        <div class="btn-confirm prompt-slide-action" id="run-prompt-slide-selector" role="button" tabindex="0">Crop Selected</div>
       </div>
     </div>
   `;
@@ -3372,7 +3390,14 @@ function initTabs() {
 
 function initUI() {
   // Safety reset: ensure modal lock states never leak across panel reloads.
-  document.body.classList.remove("preset-modal-open");
+  document.body.classList.remove(
+    "preset-modal-open",
+    "prompt-selector-modal-open",
+    "export-options-modal-open",
+    "text-paste-modal-open"
+  );
+  document.getElementById("export-options-modal")?.remove();
+  document.getElementById("styled-text-paste-modal")?.remove();
   closePromptSlideSelectorModal();
   const presetModal = document.getElementById("preset-manager-modal");
   if (presetModal) {
@@ -3411,7 +3436,14 @@ function initUI() {
   bindDropdownPreview("slide-size-preset", "slide-size-preset-inline", (value) => {
     if (slideCustomFields) slideCustomFields.classList.toggle("hidden", value !== CUSTOM_PRESET_SENTINEL);
     if (value === CUSTOM_PRESET_SENTINEL) autoFillCustomPresetDimensions("slide");
+    updateSlidePresetScaleLabel(isChecked("slide-highres") ? 2 : 1);
   });
+  const sharpOutput = document.getElementById("slide-highres");
+  if (sharpOutput) {
+    sharpOutput.addEventListener("change", () => {
+      updateSlidePresetScaleLabel(sharpOutput.checked ? 2 : 1);
+    });
+  }
 
   // Export format dropdown
   bindDropdownPreview("export-format", "export-format-inline");
@@ -3432,8 +3464,10 @@ function initUI() {
 
   if (artCustomFields) artCustomFields.classList.toggle("hidden", getVal("artboard-preset") !== CUSTOM_PRESET_SENTINEL);
   if (slideCustomFields) slideCustomFields.classList.toggle("hidden", getVal("slide-size-preset") !== CUSTOM_PRESET_SENTINEL);
+  updateSlidePresetScaleLabel(isChecked("slide-highres") ? 2 : 1);
   updateArtboardHint();
   updateDeleteSlidesUI();
+  startActiveSlideDetection();
 }
 
 function flashActionButton(button) {
@@ -3460,6 +3494,7 @@ function handleButtonClick(event) {
     case "btn-delete-artboard-keep-layers": deleteSelectedArtboardKeepLayers(); break;
     case "btn-auto-aspect-create": autoCalculateAndCreateSlide(); break;
     case "btn-create-slide": createSlideLayoutDocument(); break;
+    case "btn-refresh-slide-count": refreshSlideCountFromCanvas(); break;
 
     // NEW OPTIMIZATION ROUTERS
     case "btn-optimize-canvas": optimizeCanvas(); break;
@@ -3518,15 +3553,17 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
+// Register the shared action router before initialization so a non-critical
+// startup problem can never disable every button in the panel.
+document.addEventListener("click", handleButtonClick);
+document.addEventListener("keydown", handleActionButtonKeydown);
+document.addEventListener("keydown", handleKeydown);
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initUI);
 } else {
   initUI();
 }
-
-  document.addEventListener("click", handleButtonClick);
-  document.addEventListener("keydown", handleActionButtonKeydown);
-document.addEventListener("keydown", handleKeydown);
 
 function getArtboardLikeBounds(layer) {
   return normalizeBounds((layer && layer.boundsNoEffects) ? layer.boundsNoEffects : (layer && layer.bounds));
@@ -3814,7 +3851,10 @@ async function getTargetArtboardInfo(doc) {
 }
 
 async function createSlideLayoutDocument(overrideInputs = null) {
-  const { slideW, slideH, slideCount, exportPrefix } = overrideInputs || getSlideInputs();
+  const { slideW, slideH, slideCount, exportPrefix, resolutionScale = 1 } = overrideInputs || getSlideInputs();
+  const presetId = getVal("slide-size-preset") || CUSTOM_PRESET_SENTINEL;
+  const presetDefinition = getPresetDefinition(presetId);
+  const displayedScale = Number(document.getElementById("slide-size-preset-inline")?.dataset.scaleLevel) || 1;
   const totalW = Math.max(1, Math.round(slideW * slideCount));
   const targetH = Math.max(1, Math.round(slideH));
 
@@ -3852,12 +3892,28 @@ async function createSlideLayoutDocument(overrideInputs = null) {
         true
       );
       await resizeActiveDocumentCanvas(totalW, targetH, 0, 0);
+      await replaceDocumentGuides(doc, buildSlideGuideRatios(slideCount));
     }, { commandName: "Create Slides" });
 
     originalDocId = doc.id;
     slides = [];
     selectedSlideId = null;
-    saveSlideLayoutState(doc, { slideW, slideH: targetH, slideCount, totalW });
+    const scaleLevel = Math.max(1, Math.round(Math.max(Number(resolutionScale) || 1, displayedScale)));
+    saveSlideLayoutState(doc, {
+      documentName: getStableDocumentName(doc),
+      baseSlideW: slideW / scaleLevel,
+      baseSlideH: targetH / scaleLevel,
+      baseTotalW: totalW / scaleLevel,
+      baseTotalH: targetH / scaleLevel,
+      slideW,
+      slideH: targetH,
+      slideCount,
+      totalW,
+      currentScale: scaleLevel,
+      presetId,
+      presetLabel: presetDefinition ? getPresetLabel(presetDefinition) : "Custom",
+    });
+    updateSlidePresetScaleLabel(scaleLevel);
     renderThumbnails();
     updateDeleteSlidesUI();
     setStatus(`Scaled the layout to ${totalW}x${targetH} px for ${slideCount} slides without stretching photos`, "success");
@@ -3868,7 +3924,8 @@ async function createSlideLayoutDocument(overrideInputs = null) {
 
 // GLOBAL VARIABLES TO TRACK RESOLUTION STATES
 const OPTIMIZE_CANVAS_STATE_KEY = "slide_creator_optimize_canvas_state_v1";
-const OPTIMIZE_CANVAS_WORKING_SCALE = 0.5;
+const OPTIMIZE_CANVAS_SCALE_STEP = 1;
+const DEFAULT_EXPORT_SCALE_LEVEL = 3;
 const FAST_RESAMPLE_PRIMARY = "NEARESTNEIGHBOR";
 const FAST_RESAMPLE_FALLBACK = "BILINEAR";
 let savedOriginalDocId = null;
@@ -3957,28 +4014,26 @@ async function resizeDocumentImageCompat(doc, width, height, resolution, primary
 }
 
 async function optimizeCanvas() {
-  setStatus("Optimizing canvas for maximum speed...", "working");
+  setStatus("Moving canvas down one scale level...", "working");
   try {
     const doc = app.activeDocument;
     if (!doc) throw new Error("Open a working document first.");
 
     const currentSize = getDocumentPixelSize(doc);
-    const existingState = getOptimizeCanvasState(doc);
-    if (
-      existingState &&
-      Number(existingState.optimizedWidth) === currentSize.width &&
-      Number(existingState.optimizedHeight) === currentSize.height
-    ) {
-      setStatus(`Canvas is already optimized at ${currentSize.width}x${currentSize.height}px. Tap Scale for Export to restore.`, "success");
+    const detected = await detectSlideLayout(doc);
+    const layoutState = detected && detected.state;
+    const currentScale = detected ? detected.scaleLevel : 1;
+    if (currentScale <= 1) {
+      setStatus(`Canvas is already at the optimized 1x size (${currentSize.width}x${currentSize.height}px).`, "success");
       return;
     }
 
-    const targetWidth = Math.max(1, Math.round(currentSize.width * OPTIMIZE_CANVAS_WORKING_SCALE));
-    const targetHeight = Math.max(1, Math.round(currentSize.height * OPTIMIZE_CANVAS_WORKING_SCALE));
-    if (targetWidth === currentSize.width && targetHeight === currentSize.height) {
-      setStatus("Canvas is too small to optimize further. It is ready for export.", "success");
-      return;
-    }
+    const targetScale = Math.max(1, currentScale - OPTIMIZE_CANVAS_SCALE_STEP);
+    const baseWidth = Math.max(1, Math.round(Number(layoutState && layoutState.baseTotalW) || currentSize.width / currentScale));
+    const baseHeight = Math.max(1, Math.round(Number(layoutState && layoutState.baseTotalH) || currentSize.height / currentScale));
+    const targetWidth = Math.max(1, Math.round(baseWidth * targetScale));
+    const targetHeight = Math.max(1, Math.round(baseHeight * targetScale));
+    const guideRatios = captureDocumentGuideRatios(doc);
 
     savedOriginalDocId = doc.id;
     savedOriginalResolution = currentSize.resolution;
@@ -3987,6 +4042,7 @@ async function optimizeCanvas() {
 
     await core.executeAsModal(async () => {
       await resizeDocumentImageCompat(doc, targetWidth, targetHeight, currentSize.resolution, FAST_RESAMPLE_PRIMARY, FAST_RESAMPLE_FALLBACK);
+      await replaceDocumentGuides(doc, guideRatios);
     }, { commandName: "Optimize Canvas for Speed" });
 
     saveOptimizeCanvasState(doc, {
@@ -3996,11 +4052,23 @@ async function optimizeCanvas() {
       originalResolution: currentSize.resolution,
       optimizedWidth: targetWidth,
       optimizedHeight: targetHeight,
+      optimizedScale: targetScale,
       optimizedAt: Date.now(),
     });
 
+    saveSlideLayoutState(doc, {
+      ...(layoutState || {}),
+      baseTotalW: baseWidth,
+      baseTotalH: baseHeight,
+      slideCount: detected ? detected.slideCount : 1,
+      baseSlideW: baseWidth / Math.max(1, detected ? detected.slideCount : 1),
+      baseSlideH: baseHeight,
+      currentScale: targetScale,
+    });
+    await syncSlideSetupFromActiveDocument();
+
     setStatus(
-      `Canvas optimized to ${targetWidth}x${targetHeight}px. Tap Scale for Export to restore ${currentSize.width}x${currentSize.height}px.`,
+      `Canvas optimized from ${currentScale}x to ${targetScale}x (${targetWidth}x${targetHeight}px). Guides and layers were scaled together.`,
       "success"
     );
   } catch (e) {
@@ -4024,7 +4092,7 @@ function showScaleForExportDialog() {
       <div class="tool-modal-body scale-export-body">
         <div class="guide-layer-region-summary scale-export-summary">
           <strong>Choose export scale</strong>
-          <span>This multiplies the current canvas and all layers together.</span>
+          <span>This targets an exact scale level and keeps layers and guides aligned.</span>
         </div>
         <div class="scale-export-grid" role="radiogroup" aria-label="Export scale">
           <button type="button" class="scale-export-option selected" data-scale-multiplier="3" aria-pressed="true">
@@ -4089,19 +4157,286 @@ function writeSlideLayoutStates(states) {
 
 function getSlideLayoutStateKey(doc) {
   const docId = doc && doc.id !== undefined ? doc.id : "no-doc";
-  const docName = doc && (doc.title || doc.name) ? String(doc.title || doc.name) : "Untitled";
-  return `${docId}:${docName}`;
+  return `doc:${docId}:${getStableDocumentName(doc)}`;
+}
+
+function getStableDocumentName(doc) {
+  const rawName = doc && (doc.title || doc.name) ? String(doc.title || doc.name) : "Untitled";
+  return rawName.trim().toLowerCase();
+}
+
+function getSlideLayoutNameKey(doc) {
+  return `name:${getStableDocumentName(doc)}`;
 }
 
 function saveSlideLayoutState(doc, state) {
   const states = readSlideLayoutStates();
-  states[getSlideLayoutStateKey(doc)] = state;
+  const nextState = { ...(state || {}), documentName: getStableDocumentName(doc) };
+  states[getSlideLayoutStateKey(doc)] = nextState;
+  states[getSlideLayoutNameKey(doc)] = nextState;
   writeSlideLayoutStates(states);
 }
 
 function getSlideLayoutState(doc) {
   const states = readSlideLayoutStates();
-  return states[getSlideLayoutStateKey(doc)] || null;
+  const direct = states[getSlideLayoutStateKey(doc)] || states[getSlideLayoutNameKey(doc)];
+  if (direct) return direct;
+  const stableName = getStableDocumentName(doc);
+  const sameName = Object.values(states).find((state) => state && state.documentName === stableName);
+  if (sameName) return sameName;
+
+  const docIdPrefix = `doc:${doc && doc.id !== undefined ? doc.id : "no-doc"}:`;
+  const sameSession = Object.entries(states).find(([key]) => key.startsWith(docIdPrefix));
+  if (sameSession) return sameSession[1];
+
+  const width = Math.max(1, Number(doc && doc.width) || 1);
+  const height = Math.max(1, Number(doc && doc.height) || 1);
+  return Object.values(states).find((state) => {
+    const baseWidth = Number(state && state.baseTotalW) || 0;
+    const baseHeight = Number(state && state.baseTotalH) || 0;
+    if (baseWidth <= 0 || baseHeight <= 0) return false;
+    const widthScale = width / baseWidth;
+    const heightScale = height / baseHeight;
+    const roundedScale = Math.round((widthScale + heightScale) / 2);
+    return roundedScale >= 1
+      && roundedScale <= 5
+      && Math.abs(widthScale - heightScale) < 0.02
+      && Math.abs(widthScale - roundedScale) < 0.02;
+  }) || null;
+}
+
+function buildSlideGuideRatios(slideCount) {
+  const count = Math.max(1, Math.round(Number(slideCount) || 1));
+  return {
+    vertical: Array.from({ length: Math.max(0, count - 1) }, (_, index) => (index + 1) / count),
+    horizontal: [],
+  };
+}
+
+function captureDocumentGuideRatios(doc) {
+  const width = Math.max(1, Number(doc && doc.width) || 1);
+  const height = Math.max(1, Number(doc && doc.height) || 1);
+  return {
+    vertical: getGuideCoordinates(doc, "vertical", width).map((value) => value / width),
+    horizontal: getGuideCoordinates(doc, "horizontal", height).map((value) => value / height),
+  };
+}
+
+async function replaceDocumentGuides(doc, ratios) {
+  const width = Math.max(1, Math.round(Number(doc && doc.width) || 1));
+  const height = Math.max(1, Math.round(Number(doc && doc.height) || 1));
+  const descriptors = [{
+    _obj: "delete",
+    _target: [{ _ref: "guide", _enum: "ordinal", _value: "allEnum" }],
+    _options: { dialogOptions: "dontDisplay" },
+  }];
+
+  const addGuide = (direction, ratio, maxValue) => {
+    const position = Math.round(Math.max(0, Math.min(1, Number(ratio) || 0)) * maxValue);
+    if (position <= 0 || position >= maxValue) return;
+    descriptors.push({
+      _obj: "make",
+      _target: [{ _ref: "guide" }],
+      new: {
+        _obj: "guide",
+        position: { _unit: "pixelsUnit", _value: position },
+        orientation: { _enum: "orientation", _value: direction },
+      },
+      _options: { dialogOptions: "dontDisplay" },
+    });
+  };
+
+  Array.from((ratios && ratios.vertical) || []).forEach((ratio) => addGuide("vertical", ratio, width));
+  Array.from((ratios && ratios.horizontal) || []).forEach((ratio) => addGuide("horizontal", ratio, height));
+  await action.batchPlay(descriptors, { synchronousExecution: true, continueOnError: true });
+}
+
+function median(values) {
+  const sorted = Array.from(values || []).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return 0;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function getCurrentScaleLevel(doc, state) {
+  if (!doc || !state) return 1;
+  const baseWidth = Number(state.baseTotalW) || 0;
+  const baseHeight = Number(state.baseTotalH) || 0;
+  if (baseWidth <= 0 || baseHeight <= 0) return Math.max(1, Math.round(Number(state.currentScale) || 1));
+  const widthScale = Number(doc.width) / baseWidth;
+  const heightScale = Number(doc.height) / baseHeight;
+  return Math.max(1, Math.round((widthScale + heightScale) / 2));
+}
+
+async function detectSlideLayout(doc, options = {}) {
+  if (!doc) return null;
+  const width = Math.max(1, Math.round(Number(doc.width) || 1));
+  const height = Math.max(1, Math.round(Number(doc.height) || 1));
+  const savedState = getSlideLayoutState(doc);
+  const verticalGuides = getGuideCoordinates(doc, "vertical", width);
+  let artboards = [];
+
+  let slideCount = 0;
+  let slideW = 0;
+  let slideH = 0;
+  let source = "canvas";
+
+  if (verticalGuides.length) {
+    const boundaries = [0, ...verticalGuides, width];
+    slideCount = boundaries.length - 1;
+    slideW = median(boundaries.slice(1).map((value, index) => value - boundaries[index]));
+    slideH = height;
+    source = "guides";
+  } else if (savedState && Number(savedState.slideCount) > 0) {
+    slideCount = Math.max(1, Math.round(Number(savedState.slideCount)));
+    slideW = width / slideCount;
+    slideH = height;
+    source = "saved layout";
+  } else if (options.scanArtboards === true) {
+    artboards = sortSlideRegions(
+      (await getAllArtboardInfos(doc)).filter((item) => item && item.bounds && !isEmptyBounds(item.bounds))
+    );
+  }
+
+  if (!slideCount && artboards.length > 1) {
+    slideCount = artboards.length;
+    slideW = median(artboards.map((item) => Number(item.bounds.right) - Number(item.bounds.left)));
+    slideH = median(artboards.map((item) => Number(item.bounds.bottom) - Number(item.bounds.top)));
+    source = "artboards";
+  }
+
+  if (!slideCount && artboards.length === 1) {
+    const bounds = artboards[0].bounds;
+    slideCount = 1;
+    slideW = Number(bounds.right) - Number(bounds.left);
+    slideH = Number(bounds.bottom) - Number(bounds.top);
+    source = "artboard";
+  }
+
+  if (!slideCount) {
+    const configuredCount = Math.max(1, Math.round(Number(getSlideInputs().slideCount) || 1));
+    slideCount = configuredCount;
+    slideW = width / slideCount;
+    slideH = height;
+  }
+
+  return {
+    slideCount,
+    slideW: Math.max(1, Math.round(slideW || width / slideCount)),
+    slideH: Math.max(1, Math.round(slideH || height)),
+    source,
+    state: savedState,
+    scaleLevel: getCurrentScaleLevel(doc, savedState),
+  };
+}
+
+function updateSlidePresetScaleLabel(scaleLevel, labelOverride = "") {
+  const inline = document.getElementById("slide-size-preset-inline");
+  if (!inline) return;
+  const selectedId = getVal("slide-size-preset");
+  const preset = getPresetDefinition(selectedId);
+  const baseLabel = labelOverride || (preset ? getPresetLabel(preset) : "Custom");
+  const normalizedScale = Math.max(1, Math.round(Number(scaleLevel) || 1));
+  inline.dataset.scaleLevel = String(normalizedScale);
+  inline.textContent = `${baseLabel} [${normalizedScale}x]`;
+}
+
+async function refreshSlideCountFromCanvas() {
+  const doc = app.activeDocument;
+  if (!doc) {
+    setStatus("Open a slide document before refreshing the slide count.", "error");
+    return;
+  }
+
+  const width = Math.max(1, Math.round(Number(doc.width) || 1));
+  const height = Math.max(1, Math.round(Number(doc.height) || 1));
+  const verticalGuides = getGuideCoordinates(doc, "vertical", width);
+  if (!verticalGuides.length) {
+    setStatus("No vertical slide guides were found inside the canvas.", "error");
+    return;
+  }
+
+  const boundaries = [0, ...verticalGuides, width];
+  const slideCount = boundaries.length - 1;
+  const slideWidths = boundaries.slice(1).map((value, index) => value - boundaries[index]);
+  const slideW = Math.max(1, Math.round(median(slideWidths)));
+  const previousState = getSlideLayoutState(doc);
+  const scaleLevel = getCurrentScaleLevel(doc, previousState);
+
+  syncDropdownSelection("slide-size-preset", "slide-size-preset-inline", CUSTOM_PRESET_SENTINEL);
+  document.getElementById("slide-custom-fields")?.classList.remove("hidden");
+  setFieldValue("slide-custom-w", slideW);
+  setFieldValue("slide-custom-h", height);
+  setFieldValue("slide-count", slideCount);
+  updateSlidePresetScaleLabel(scaleLevel, (previousState && previousState.presetLabel) || "Detected guides");
+
+  saveSlideLayoutState(doc, {
+    ...(previousState || {}),
+    slideCount,
+    slideW,
+    slideH: height,
+    totalW: width,
+    currentScale: scaleLevel,
+    baseSlideW: Number(previousState && previousState.baseSlideW) || slideW / scaleLevel,
+    baseSlideH: Number(previousState && previousState.baseSlideH) || height / scaleLevel,
+    baseTotalW: Number(previousState && previousState.baseTotalW) || width / scaleLevel,
+    baseTotalH: Number(previousState && previousState.baseTotalH) || height / scaleLevel,
+  });
+
+  activeSlideDetectionSignature = getActiveSlideDetectionSignature();
+  setStatus(`Refreshed: ${slideCount} slides detected from ${verticalGuides.length} guide line${verticalGuides.length === 1 ? "" : "s"}.`, "success");
+}
+
+async function syncSlideSetupFromActiveDocument(options = {}) {
+  const doc = app.activeDocument;
+  if (!doc) return null;
+  const detected = await detectSlideLayout(doc, { quick: true });
+  if (!detected) return null;
+  if (detected.source === "canvas" && !detected.state && !options.force) return null;
+
+  syncDropdownSelection("slide-size-preset", "slide-size-preset-inline", CUSTOM_PRESET_SENTINEL);
+  document.getElementById("slide-custom-fields")?.classList.remove("hidden");
+  const sharpOutput = document.getElementById("slide-highres");
+  if (sharpOutput) sharpOutput.checked = false;
+  setFieldValue("slide-custom-w", detected.slideW);
+  setFieldValue("slide-custom-h", detected.slideH);
+  setFieldValue("slide-count", detected.slideCount);
+  const savedLabel = detected.state && detected.state.presetLabel;
+  updateSlidePresetScaleLabel(detected.scaleLevel, savedLabel || "Custom");
+
+  if (options.announce) {
+    setStatus(`Detected ${detected.slideCount} slide(s) from ${detected.source} at ${detected.slideW}x${detected.slideH}px [${detected.scaleLevel}x].`, "success");
+  }
+  return detected;
+}
+
+let activeSlideDetectionSignature = "";
+let activeSlideDetectionTimer = null;
+
+function getActiveSlideDetectionSignature() {
+  const doc = app.activeDocument;
+  if (!doc) return "no-document";
+  const width = Math.max(1, Math.round(Number(doc.width) || 1));
+  const height = Math.max(1, Math.round(Number(doc.height) || 1));
+  const guideCount = doc.guides ? Number(doc.guides.length) || 0 : 0;
+  return `${doc.id}:${getStableDocumentName(doc)}:${width}x${height}:${guideCount}`;
+}
+
+function startActiveSlideDetection() {
+  if (activeSlideDetectionTimer) window.clearInterval(activeSlideDetectionTimer);
+  const check = async () => {
+    const signature = getActiveSlideDetectionSignature();
+    if (signature === activeSlideDetectionSignature) return;
+    activeSlideDetectionSignature = signature;
+    if (signature === "no-document") return;
+    try {
+      await syncSlideSetupFromActiveDocument();
+    } catch (error) {
+      console.warn("Automatic slide detection skipped.", error);
+    }
+  };
+  setTimeout(check, 250);
+  activeSlideDetectionTimer = window.setInterval(check, 1200);
 }
 
 async function getCurrentSlideRegionsForDoc(doc, savedState = null) {
@@ -4353,8 +4688,8 @@ async function reflowLayersToSlideRegions(doc, slideAssignments, previousRegions
   }
 }
 
-async function scaleForExport(multiplier = 3) {
-  setStatus(`Scaling document to ${multiplier}x for export...`, "working");
+async function scaleForExport(multiplier = DEFAULT_EXPORT_SCALE_LEVEL) {
+  setStatus(`Scaling document to the ${multiplier}x export level...`, "working");
   try {
     const doc = app.activeDocument;
     if (!doc) throw new Error("No active document found.");
@@ -4362,9 +4697,20 @@ async function scaleForExport(multiplier = 3) {
     const currentWidth = Math.max(1, Math.round(Number(doc.width)));
     const currentHeight = Math.max(1, Math.round(Number(doc.height)));
     const currentResolution = Math.max(1, Number(doc.resolution) || 72);
-    const scaleValue = Math.max(1, Number(multiplier) || 3);
-    const targetWidth = Math.max(1, Math.round(currentWidth * scaleValue));
-    const targetHeight = Math.max(1, Math.round(currentHeight * scaleValue));
+    const scaleValue = Math.max(1, Math.round(Number(multiplier) || DEFAULT_EXPORT_SCALE_LEVEL));
+    const detected = await detectSlideLayout(doc);
+    const layoutState = detected && detected.state;
+    const currentScale = detected ? detected.scaleLevel : 1;
+    const baseWidth = Math.max(1, Math.round(Number(layoutState && layoutState.baseTotalW) || currentWidth / currentScale));
+    const baseHeight = Math.max(1, Math.round(Number(layoutState && layoutState.baseTotalH) || currentHeight / currentScale));
+    const targetWidth = Math.max(1, Math.round(baseWidth * scaleValue));
+    const targetHeight = Math.max(1, Math.round(baseHeight * scaleValue));
+    const guideRatios = captureDocumentGuideRatios(doc);
+
+    if (targetWidth === currentWidth && targetHeight === currentHeight) {
+      setStatus(`Canvas is already at the ${scaleValue}x export size.`, "success");
+      return;
+    }
 
     await core.executeAsModal(async () => {
       await resizeDocumentImageCompat(
@@ -4375,10 +4721,21 @@ async function scaleForExport(multiplier = 3) {
         FAST_RESAMPLE_PRIMARY,
         FAST_RESAMPLE_FALLBACK
       );
+      await replaceDocumentGuides(doc, guideRatios);
     }, { commandName: `Scale for Export ${scaleValue}x` });
 
     clearOptimizeCanvasState(doc);
-    setStatus(`Scaled canvas and layers to ${scaleValue}x: ${targetWidth}x${targetHeight}px.`, "success");
+    saveSlideLayoutState(doc, {
+      ...(layoutState || {}),
+      baseTotalW: baseWidth,
+      baseTotalH: baseHeight,
+      slideCount: detected ? detected.slideCount : 1,
+      baseSlideW: baseWidth / Math.max(1, detected ? detected.slideCount : 1),
+      baseSlideH: baseHeight,
+      currentScale: scaleValue,
+    });
+    await syncSlideSetupFromActiveDocument();
+    setStatus(`Scaled guides and all canvas layers from ${currentScale}x to the fixed ${scaleValue}x export size: ${targetWidth}x${targetHeight}px.`, "success");
   } catch (e) {
     showError("Scaling for export failed", e);
   }
@@ -4602,51 +4959,17 @@ async function organizeLayersIntoSlides() {
 
 
 async function addGuides() {
-  const { slideW, slideH, slideCount } = getSlideInputs();
+  const configured = getSlideInputs();
   setStatus("Adding guides...", "working");
   try {
+    const doc = app.activeDocument;
+    if (!doc) throw new Error("No active document.");
+    const detected = await detectSlideLayout(doc);
+    const slideCount = detected ? detected.slideCount : configured.slideCount;
+    const slideW = Math.max(1, Math.round(Number(doc.width) / slideCount));
+    const slideH = Math.max(1, Math.round(Number(doc.height)));
     await core.executeAsModal(async () => {
-      const doc = app.activeDocument;
-      if (!doc) throw new Error("No active document.");
-
-      await action.batchPlay([{
-        _obj: "delete",
-        _target: [{ _ref: "guide", _enum: "ordinal", _value: "allEnum" }],
-        _options: { dialogOptions: "dontDisplay" },
-      }], {});
-
-      const docWidth = Math.round(Number(doc.width));
-      const docHeight = Math.round(Number(doc.height));
-
-      for (let i = 1; i < slideCount; i++) {
-        const guideX = Math.round(slideW * i);
-        if (guideX >= docWidth) break;
-
-        await action.batchPlay([{
-          _obj: "make",
-          _target: [{ _ref: "guide" }],
-          new: {
-            _obj: "guide",
-            position: { _unit: "pixelsUnit", _value: guideX },
-            orientation: { _enum: "orientation", _value: "vertical" },
-          },
-          _options: { dialogOptions: "dontDisplay" },
-        }], {});
-      }
-
-      const guideY = Math.round(slideH);
-      if (guideY > 0 && guideY < docHeight) {
-        await action.batchPlay([{
-          _obj: "make",
-          _target: [{ _ref: "guide" }],
-          new: {
-            _obj: "guide",
-            position: { _unit: "pixelsUnit", _value: guideY },
-            orientation: { _enum: "orientation", _value: "horizontal" },
-          },
-          _options: { dialogOptions: "dontDisplay" },
-        }], {});
-      }
+      await replaceDocumentGuides(doc, buildSlideGuideRatios(slideCount));
     }, { commandName: "Add Guides" });
 
     setStatus(`Guides updated for ${slideCount} slide(s) at ${slideW}x${slideH}px`, "success");
@@ -5271,9 +5594,9 @@ function renderLayout() {
   renderAutoSaveTimerCard(toolsFooter);
   renderDefaultExportFolderCard(toolsFooter);
 
-  const exportRow = document.createElement("div");
-  exportRow.className = "tools-export-row";
-  toolsFooter.appendChild(exportRow);
+  const formatExportStack = document.createElement("div");
+  formatExportStack.className = "tools-format-export-stack";
+  toolsFooter.appendChild(formatExportStack);
 
   const jpgBtn = document.createElement("div");
   jpgBtn.id = "tools-export-jpg-btn";
@@ -5289,7 +5612,7 @@ function renderLayout() {
   `;
   jpgBtn.title = "Export document as JPG";
   jpgBtn.addEventListener("click", () => showExportDialog("jpg"));
-  exportRow.appendChild(jpgBtn);
+  formatExportStack.appendChild(jpgBtn);
 
   // â”€â”€ PNG Export button â”€â”€
   const pngBtn = document.createElement("div");
@@ -5306,7 +5629,7 @@ function renderLayout() {
   `;
   pngBtn.title = "Export document as PNG";
   pngBtn.addEventListener("click", () => showExportDialog("png"));
-  exportRow.appendChild(pngBtn);
+  formatExportStack.appendChild(pngBtn);
 
   // â”€â”€ Export All Layers button â”€â”€
   const exportAllBtn = document.createElement("div");

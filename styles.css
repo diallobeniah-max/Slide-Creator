@@ -6378,6 +6378,54 @@ body.preset-modal-open #preset-manager-modal * {
     transition: opacity 0.15s ease;
 }
 
+.slide-setup-hero-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+    align-self: flex-start;
+    margin-top: 16px;
+}
+
+.slide-layout-refresh {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid rgba(105, 217, 255, 0.38);
+    border-radius: 10px;
+    color: #8de7ff;
+    background: linear-gradient(145deg, rgba(18, 47, 62, 0.88), rgba(7, 18, 28, 0.96));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 6px 16px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+}
+
+.slide-layout-refresh-glyph {
+    display: block;
+    color: currentColor;
+    font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
+    font-size: 21px;
+    font-weight: 600;
+    line-height: 1;
+    transform: translateY(-1px);
+    pointer-events: none;
+}
+
+.slide-layout-refresh:hover,
+.slide-layout-refresh:focus-visible {
+    color: #d5f8ff;
+    border-color: rgba(105, 217, 255, 0.72);
+    background: linear-gradient(145deg, rgba(23, 65, 83, 0.96), rgba(8, 25, 38, 0.98));
+    outline: none;
+}
+
+.slide-layout-refresh:active {
+    transform: translateY(1px);
+}
+
 .custom-scrollbar-thumb {
     position: absolute;
     top: 0;
@@ -8511,6 +8559,17 @@ sp-dropdown *::-webkit-scrollbar-button {
 }
 
 /* Repair visible export controls and Scale for Export choices */
+#panel-root .tools-format-export-stack {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 9px !important;
+    width: 100% !important;
+    min-height: 93px !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
 #panel-root .tools-export-row {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -8535,6 +8594,12 @@ sp-dropdown *::-webkit-scrollbar-button {
     overflow: hidden !important;
     opacity: 1 !important;
     visibility: visible !important;
+}
+
+#panel-root .tools-format-export-stack .tools-jpg-btn,
+#panel-root .tools-format-export-stack .tools-png-btn {
+    width: 100% !important;
+    flex: 0 0 auto !important;
 }
 
 #panel-root .tools-export-btn span,

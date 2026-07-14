@@ -299,10 +299,11 @@
                 <span class="section-title">Slide Setup</span>
                 <span class="slide-setup-subtitle">Choose a ratio, build the strip, add guides, then crop and export the finished slides.</span>
               </div>
-              <div class="slide-strip-mark" aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
+              <div class="slide-setup-hero-actions">
+                <button id="btn-refresh-slide-count" type="button" class="slide-layout-refresh" data-action-button
+                  title="Recount slides from canvas guides" aria-label="Refresh slide count from canvas guides">
+                  <span class="slide-layout-refresh-glyph" aria-hidden="true">&#8635;</span>
+                </button>
               </div>
             </div>
 
@@ -379,11 +380,10 @@
               <sp-button id="btn-create-slide" variant="cta" size="m" class="full-width slide-create-primary">
                 Create Slides
               </sp-button>
-              <p class="hint-text">
-                Resizes the current document canvas to the Slide Setup width and
-                height, fits the visible layout to the selected ratio, and keeps
-                photo layers from stretching. Use Scale for Export to upscale
-                the full document to 3x, 4x, or 5x before exporting.
+              <p class="hint-text" id="slide-create-description">
+                Builds the selected slide strip, scales every layer with the canvas,
+                and adds matching guides automatically. Optimize Canvas moves down
+                one scale level; Scale for Export targets an exact 3x, 4x, or 5x size.
               </p>
 
               <div class="row-2 slide-optimization-row">
@@ -459,7 +459,7 @@
                 </div>
                 <div class="row-2 crop-slides-row-visible">
                   <sp-button id="btn-crop-slides" variant="secondary" size="s">Crop Slides</sp-button>
-                  <sp-button id="btn-prompt-crop-slides" variant="secondary" size="s">Prompt Selector Slides</sp-button>
+                  <sp-button id="btn-prompt-crop-slides" variant="secondary" size="s">Select Slides</sp-button>
                 </div>
               </div>
 
